@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FORGEWORLD P0 — 공정 프로토타입</title>
+<style>
+  :root { --accent:#f58b1f; --bg:rgba(12,14,18,.82); --line:rgba(255,255,255,.12); --bad:#e0433a; --ok:#4bd37b; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#000; font-family:-apple-system,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",sans-serif; color:#eee; user-select:none; }
+  canvas#c { display:block; width:100%; height:100%; }
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hud > * { position:absolute; }
+  #crosshair { left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; }
+  #crosshair:before,#crosshair:after { content:""; position:absolute; background:#fff; opacity:.85; }
+  #crosshair:before { left:6px; top:0; width:2px; height:14px; }
+  #crosshair:after { top:6px; left:0; width:14px; height:2px; }
+  #stats { left:16px; top:16px; width:220px; display:flex; flex-direction:column; gap:6px; }
+  .bar { height:14px; background:rgba(0,0,0,.5); border:1px solid var(--line); border-radius:4px; overflow:hidden; position:relative; }
+  .bar i { display:block; height:100%; width:100%; transition:width .15s; }
+  .bar span { position:absolute; left:6px; top:-1px; font-size:11px; font-weight:600; text-shadow:0 1px 2px #000; }
+  #hp i { background:#e0433a; } #heat i { background:#ff7a1a; } #stamina i { background:#4bb3fd; }
+  #clock { right:16px; top:16px; background:var(--bg); padding:6px 10px; border-radius:6px; font-size:13px; border:1px solid var(--line); }
+  #objective { right:16px; top:56px; max-width:320px; background:var(--bg); padding:8px 12px; border-radius:6px; font-size:13px; border-left:3px solid var(--accent); line-height:1.45; }
+  #objective b { color:var(--accent); }
+  #prompt { left:50%; top:56%; transform:translateX(-50%); font-size:15px; background:var(--bg); padding:6px 12px; border-radius:6px; white-space:nowrap; display:none; text-align:center; line-height:1.4; }
+  #prompt small { color:#aaa; font-size:12px; }
+  #prog { left:50%; top:63%; width:200px; margin-left:-100px; height:8px; background:rgba(0,0,0,.5); border:1px solid var(--line); border-radius:4px; display:none; }
+  #prog i { display:block; height:100%; background:var(--accent); width:0; }
+  #inv { left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:90vw; }
+  .chip { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:12px; display:flex; align-items:center; gap:6px; }
+  .chip i { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  #keys { left:16px; bottom:16px; font-size:11px; opacity:.7; line-height:1.6; }
+  #toast { left:50%; top:20%; transform:translateX(-50%); font-size:15px; background:rgba(245,139,31,.92); color:#111; padding:8px 16px; border-radius:6px; opacity:0; transition:opacity .3s; font-weight:600; }
+  #buildmode { left:50%; top:16px; transform:translateX(-50%); background:rgba(245,139,31,.92); color:#111; padding:6px 14px; border-radius:6px; font-weight:700; display:none; }
+  .overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); }
+  .panel { background:#15181e; border:1px solid var(--line); border-radius:10px; width:min(920px,94vw); max-height:88vh; overflow:auto; padding:20px 24px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .panel h2 { margin:0 0 12px; font-size:20px; color:var(--accent); display:flex; justify-content:space-between; align-items:center; }
+  .panel h2 small { font-size:12px; color:#999; font-weight:400; }
+  .panel h3 { margin:14px 0 8px; font-size:13px; color:#bbb; text-transform:uppercase; letter-spacing:.06em; }
+  .cols { display:grid; grid-template-columns:1fr 1.5fr; gap:20px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; background:rgba(255,255,255,.03); }
+  .row.off { opacity:.5; }
+  .row .nm { font-weight:600; }
+  .row .cost, .cond { font-size:12px; color:#aaa; }
+  .lack { color:var(--bad); }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:3px; background:#2a2e36; color:#ccc; margin-right:4px; }
+  .tag.th { background:#4a2a1a; color:#ffb380; } .tag.me { background:#1f3346; color:#9fd0ff; } .tag.pw { background:#2f3a1f; color:#c6ef8f; }
+  button { background:var(--accent); color:#111; border:0; border-radius:5px; padding:6px 12px; font-weight:700; cursor:pointer; font-size:13px; }
+  button:disabled { background:#444; color:#888; cursor:default; }
+  button.ghost { background:transparent; color:#ddd; border:1px solid var(--line); }
+  select { background:#222; color:#eee; border:1px solid var(--line); border-radius:5px; padding:6px; font-size:13px; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:12px; cursor:pointer; background:rgba(255,255,255,.03); }
+  .card:hover { border-color:var(--accent); }
+  .card.off { opacity:.5; }
+  .card .nm { font-weight:700; font-size:15px; margin-bottom:4px; }
+  .card .ds { font-size:12px; color:#aaa; margin-bottom:6px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; min-height:28px; }
+  .meter { height:10px; background:rgba(0,0,0,.5); border:1px solid var(--line); border-radius:4px; overflow:hidden; margin:4px 0; }
+  .meter i { display:block; height:100%; }
+  .status { font-size:13px; padding:6px 10px; border-radius:5px; background:rgba(255,255,255,.05); margin:6px 0; }
+  .status.bad { background:rgba(224,67,58,.18); color:#ffb3ad; } .status.ok { background:rgba(75,211,123,.14); color:#b6f5cb; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; }
+  .tabs button { background:#222; color:#ccc; } .tabs button.on { background:var(--accent); color:#111; }
+  table.codex { width:100%; border-collapse:collapse; font-size:12px; }
+  table.codex th, table.codex td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.codex th { color:#999; font-weight:600; }
+  #menu .panel { text-align:center; width:min(640px,94vw); }
+  #menu h1 { margin:0 0 6px; color:var(--accent); font-size:30px; letter-spacing:.04em; }
+  #menu p { color:#aaa; margin:0 0 16px; }
+  #menu .help { text-align:left; font-size:13px; line-height:1.7; background:rgba(255,255,255,.04); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
+  #menu kbd { background:#2a2e36; padding:1px 6px; border-radius:4px; font-family:ui-monospace,monospace; font-size:12px; border:1px solid #444; }
+  #menu .btns { display:flex; gap:10px; justify-content:center; }
+  #menu .btns button { font-size:15px; padding:10px 20px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="stats">
+    <div class="bar" id="hp"><i></i><span>체력</span></div>
+    <div class="bar" id="heat"><i></i><span>열 노출</span></div>
+    <div class="bar" id="stamina"><i></i><span>스태미나</span></div>
+  </div>
+  <div id="clock">Day 1 · 07:00</div>
+  <div id="objective"></div>
+  <div id="buildmode"></div>
+  <div id="prompt"></div>
+  <div id="prog"><i></i></div>
+  <div id="inv"></div>
+  <div id="keys">WASD 이동 · Shift 달리기 · Space 점프 · 좌클릭 채굴/크랭크<br>Tab 인벤토리·도감 · B 건설 · E 기계 열기 · X 철거 · R 회전 · Q 취소</div>
+  <div id="toast"></div>
+</div>
+
+<div id="menu" class="overlay" style="display:flex">
+  <div class="panel">
+    <h1>FORGEWORLD <span style="font-size:14px;color:#888">P0</span></h1>
+    <p>공정 프로토타입 — 철 광석에서 강판까지, 6단계를 직접 조립하세요</p>
+    <div class="help">
+      <b>규칙:</b> 모든 레시피는 처음부터 <kbd>Tab</kbd> 도감에 공개돼 있어요. 막는 건 재료·온도·동력뿐입니다.<br>
+      <b>체인:</b> 파쇄(동력) → 선별(동력) → 소결(900°C) → 제련(1500°C, 석탄) → 정련(1600°C+송풍) → 압연(동력). 초반엔 괴철로(목탄+풀무)로 철판을 만들어 용광로를 짓습니다.<br>
+      <b>동력:</b> 손 크랭크(좌클릭 유지)나 증기기관을 <b>회전축</b>으로 기계에 연결. 모자라면 느려져요.<br>
+      <b>온도:</b> 연료마다 최고 온도가 달라요 (목재 600 · 목탄 1000 · 석탄 1500). 기계 한계를 넘기면 과열로 망가져요.<br>
+      <b>마모:</b> 기계는 쓰면 닳고, 0이 되면 고장. 기계 창에서 재료로 수리.<br>
+      <kbd>WASD</kbd> 이동 · <kbd>좌클릭 유지</kbd> 채굴 · <kbd>B</kbd> 건설 · <kbd>E</kbd> 기계 · <kbd>X</kbd> 철거 · <kbd>Esc</kbd> 메뉴 · 30초 자동 저장
+    </div>
+    <div class="btns">
+      <button id="btnStart">게임 시작</button>
+      <button id="btnSave" class="ghost">저장</button>
+      <button id="btnReset" class="ghost">새 게임 (초기화)</button>
+    </div>
+    <p id="menuMsg" style="margin-top:12px;font-size:12px"></p>
+  </div>
+</div>
+
+<div id="ui" class="overlay"><div class="panel" id="uiPanel"></div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+// ============================================================
+// 유틸
+// ============================================================
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const $=s=>document.querySelector(s);
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function makeNoise(seed){
+  const F2=0.5*(Math.sqrt(3)-1), G2=(3-Math.sqrt(3))/6;
+  const grad=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+  const r=mulberry32(seed); const perm=[...Array(256).keys()];
+  for(let i=255;i>0;i--){ const j=Math.floor(r()*(i+1)); [perm[i],perm[j]]=[perm[j],perm[i]]; }
+  const p=new Uint8Array(512); for(let i=0;i<512;i++) p[i]=perm[i&255];
+  return (xin,yin)=>{
+    let n0=0,n1=0,n2=0; const s=(xin+yin)*F2, i=Math.floor(xin+s), j=Math.floor(yin+s), t=(i+j)*G2;
+    const x0=xin-(i-t), y0=yin-(j-t); const i1=x0>y0?1:0, j1=x0>y0?0:1;
+    const x1=x0-i1+G2, y1=y0-j1+G2, x2=x0-1+2*G2, y2=y0-1+2*G2; const ii=i&255, jj=j&255;
+    const g0=grad[p[ii+p[jj]]&7], g1=grad[p[ii+i1+p[jj+j1]]&7], g2=grad[p[ii+1+p[jj+1]]&7];
+    let t0=0.5-x0*x0-y0*y0; if(t0>0){ t0*=t0; n0=t0*t0*(g0[0]*x0+g0[1]*y0); }
+    let t1=0.5-x1*x1-y1*y1; if(t1>0){ t1*=t1; n1=t1*t1*(g1[0]*x1+g1[1]*y1); }
+    let t2=0.5-x2*x2-y2*y2; if(t2>0){ t2*=t2; n2=t2*t2*(g2[0]*x2+g2[1]*y2); }
+    return 70*(n0+n1+n2);
+  };
+}
+
+// ============================================================
+// 데이터 — 아이템 / 연료 / 기계 / 레시피 (전부 공개)
+// ============================================================
+const ITEMS={
+  wood:{name:'목재',color:'#8b5a2b'}, stone:{name:'돌',color:'#8a8a8a'}, coal:{name:'석탄',color:'#2b2b2b'}, charcoal:{name:'목탄',color:'#4a3a2a'},
+  iron_ore:{name:'철 광석',color:'#9a5a3c'}, iron_powder:{name:'철 분말',color:'#7a4a30'}, iron_concentrate:{name:'철 정광',color:'#b0683a'}, gangue:{name:'맥석(부산물)',color:'#6b6b60'},
+  sinter:{name:'소결광',color:'#8d5a3a'}, iron_bloom:{name:'괴철',color:'#8f8f8f'}, pig_iron:{name:'선철',color:'#6f7378'}, steel:{name:'강철',color:'#b7c0c8'},
+  iron_plate:{name:'철판',color:'#c9c9c9'}, iron_rod:{name:'철봉',color:'#9e9e9e'}, steel_plate:{name:'강판',color:'#dfe6ec'}, steel_rod:{name:'강봉',color:'#c3ccd4'},
+};
+const FUELS={ wood:{heat:600,time:8}, charcoal:{heat:1000,time:14}, coal:{heat:1500,time:20} };
+const R=(name,inp,out,time,cond={})=>({name,in:inp,out,time,...cond});
+const MACHINES={
+  hand_crank:{name:'손 크랭크',cat:'power',cost:{wood:10},repair:{wood:3},power:3,desc:'조준하고 좌클릭 유지로 돌린다. 3kW. 스태미나 소모'},
+  crusher:{name:'파쇄기',cat:'mech',cost:{stone:15,wood:5},repair:{stone:5},demand:2,wear:0.25,desc:'광석을 분말로. 동력 2kW',recipes:{iron_powder:R('철 분말',{iron_ore:1},{iron_powder:1},3)}},
+  sorter:{name:'선별기',cat:'mech',cost:{stone:10,wood:5},repair:{stone:4},demand:1,wear:0.2,desc:'분말에서 정광을 거른다. 맥석 부산물 발생. 1kW',recipes:{iron_concentrate:R('철 정광',{iron_powder:2},{iron_concentrate:1,gangue:1},3)}},
+  kiln:{name:'가마',cat:'thermal',cost:{stone:20},repair:{stone:6},maxTemp:1000,wear:0.15,desc:'돌 가마. 한계 1000°C. 목탄 굽기·소결',recipes:{charcoal:R('목탄',{wood:2},{charcoal:1},4,{temp:400}),sinter:R('소결광',{iron_concentrate:1},{sinter:1},5,{temp:900})}},
+  bloomery:{name:'괴철로',cat:'thermal',cost:{stone:25,wood:5},repair:{stone:8},maxTemp:1300,wear:0.15,demand:2,airBonus:250,desc:'원시 제철. 목탄(1000°C) + 풀무 동력 2kW(+250°C)로 1200°C. 괴철은 손으로 두드려 철판·철봉',recipes:{iron_bloom:R('괴철',{sinter:2},{iron_bloom:1},8,{temp:1200})}},
+  blast_furnace:{name:'용광로',cat:'thermal',cost:{stone:30,iron_plate:10},repair:{iron_plate:2},maxTemp:1800,wear:0.15,desc:'한계 1800°C. 석탄 필요. 소결광 → 선철',recipes:{pig_iron:R('선철',{sinter:1},{pig_iron:1},4,{temp:1500})}},
+  converter:{name:'전로',cat:'thermal',cost:{iron_plate:12,iron_rod:6},repair:{iron_plate:2},maxTemp:1900,wear:0.2,demand:3,airBonus:250,desc:'선철 → 강철. 1600°C. 송풍기 동력 3kW가 있어야 +250°C',recipes:{steel:R('강철',{pig_iron:1},{steel:1},4,{temp:1600})}},
+  rolling_mill:{name:'압연기',cat:'mech',cost:{iron_plate:15,iron_rod:10},repair:{iron_plate:3},demand:8,wear:0.2,select:true,desc:'강철 → 강판/강봉. 8kW',recipes:{steel_plate:R('강판',{steel:2},{steel_plate:1},4),steel_rod:R('강봉',{steel:1},{steel_rod:2},3)}},
+  steam_engine:{name:'증기기관',cat:'power',cost:{iron_plate:10,iron_rod:6},repair:{iron_plate:2},power:20,fuel:true,wear:0.1,desc:'연료를 때면 20kW. 회전축으로 분배'},
+  miner:{name:'채굴기',cat:'mech',cost:{steel_plate:5,iron_rod:5},repair:{iron_plate:2},demand:5,wear:0.15,desc:'광석 노드 위에. 5kW. 자동 채굴 (2초/개)',node:true},
+  storage:{name:'보관함',cat:'storage',cost:{wood:15},desc:'500개 보관. 컨베이어 종점'},
+  conveyor:{name:'컨베이어',cat:'link',cost:{wood:1},desc:'기계 → 기계 아이템 운반. 2m당 목재 1'},
+  shaft:{name:'회전축',cat:'link',cost:{wood:1},desc:'동력원 → 기계 동력 전달. 2m당 목재 1'},
+};
+const BUILD_ORDER=['hand_crank','crusher','sorter','kiln','bloomery','blast_furnace','converter','rolling_mill','steam_engine','miner','storage','conveyor','shaft'];
+const HAND_RECIPES={ iron_plate:R('철판 (괴철 망치질)',{iron_bloom:1},{iron_plate:1},0), iron_rod:R('철봉 (괴철 망치질)',{iron_bloom:1},{iron_rod:2},0) };
+const OBJECTIVES=[
+  {t:'<b>목재 20 · 돌 40</b> 모으기 (나무·바위를 좌클릭 유지)', c:()=>cnt('wood')>=20&&cnt('stone')>=40},
+  {t:'<b>손 크랭크 + 파쇄기</b> 설치 후 <b>회전축</b>으로 연결, 철 광석을 넣고 크랭크를 돌려 <b>철 분말 6</b>', c:()=>cnt('iron_powder')>=6||cnt('iron_concentrate')>=3},
+  {t:'<b>선별기</b>를 붙여 <b>철 정광 6</b> (맥석은 버려지는 부산물)', c:()=>cnt('iron_concentrate')>=6||cnt('sinter')>=4},
+  {t:'<b>가마</b>에 목재를 연료로 넣어 <b>목탄</b>을 굽고, 목탄(1000°C)으로 정광을 <b>소결광 6</b>', c:()=>cnt('sinter')>=6||cnt('iron_bloom')>=3},
+  {t:'<b>괴철로</b>에 목탄 + 크랭크 회전축(풀무)으로 1200°C. 괴철을 Tab에서 망치질해 <b>철판 10 · 철봉 6</b>', c:()=>cnt('iron_plate')>=10&&cnt('iron_rod')>=6},
+  {t:'먼 곳의 <b>석탄 황야</b>(북동쪽, 검은 노드)를 찾아 석탄 채굴. <b>용광로</b>(1500°C)로 <b>선철 4</b>', c:()=>cnt('pig_iron')>=4||cnt('steel')>=2},
+  {t:'<b>전로</b>에 석탄 + 송풍 동력 3kW를 연결해 1600°C 달성, <b>강철 4</b>', c:()=>cnt('steel')>=4||cnt('steel_plate')>=1},
+  {t:'<b>압연기</b>(8kW: 크랭크로는 부족 → 증기기관)로 <b>강판 2</b>. 6단계 완주!', c:()=>cnt('steel_plate')>=2},
+  {t:'보너스: 채굴기 + 컨베이어로 <b>무인 라인</b> 만들기', c:()=>S.machines.some(m=>m.type==='miner')&&S.conveyors.length>=3},
+];
+
+// ============================================================
+// 상태
+// ============================================================
+const S={ inv:{}, hp:100, heat:0, stamina:100, day:1, time:0.3, obj:0,
+  machines:[], conveyors:[], shafts:[], removed:new Set(),
+  build:null, ghost:null, ghostMats:[], ghostRot:0, linkFrom:null,
+  panel:null, openMachine:null, tab:'inv', mining:{target:null,progress:0}, mouseDown:false, cranking:false, started:false, invDirty:true, playTime:0 };
+const keys={};
+const cnt=it=>S.inv[it]||0;
+function invAdd(it,n=1){ S.inv[it]=(S.inv[it]||0)+n; if(S.inv[it]<=0) delete S.inv[it]; S.invDirty=true; }
+function hasAll(bag,cost){ return Object.entries(cost).every(([k,v])=>(bag[k]||0)>=v); }
+function takeAll(bag,cost){ for(const [k,v] of Object.entries(cost)){ bag[k]-=v; if(bag[k]<=0) delete bag[k]; } }
+function addAll(bag,items,mult=1){ for(const [k,v] of Object.entries(items)) bag[k]=(bag[k]||0)+v*mult; }
+const total=bag=>Object.values(bag).reduce((a,b)=>a+b,0);
+const iname=k=>ITEMS[k]?.name||k;
+function costStr(cost,bag=S.inv){ return Object.entries(cost).map(([k,v])=>`<span class="${(bag[k]||0)>=v?'':'lack'}">${iname(k)} ${v}</span>`).join(' · '); }
+function bagStr(bag){ const e=Object.entries(bag); return e.length? e.map(([k,v])=>`<span class="chip"><i style="background:${ITEMS[k].color}"></i>${iname(k)} ×${v}</span>`).join('') : '<span style="color:#666;font-size:12px">비어 있음</span>'; }
+function condStr(r,cfg){ const a=[]; if(r.temp) a.push(`<span class="tag th">${r.temp}°C</span>`); if(cfg?.demand) a.push(`<span class="tag pw">${cfg.demand}kW</span>`); a.push(`<span class="tag">${r.time}s</span>`); return a.join(''); }
+let toastT=null; function toast(msg){ const el=$('#toast'); el.textContent=msg; el.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(()=>el.style.opacity=0,2400); }
+
+// ============================================================
+// 렌더러 / 씬 / 지형
+// ============================================================
+const canvas=$('#c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.outputColorSpace=THREE.SRGBColorSpace;
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x87ceeb); scene.fog=new THREE.Fog(0x87ceeb,90,340);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,700);
+const hemi=new THREE.HemisphereLight(0xbfd9ff,0x5a4a2a,0.7); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff2d8,2); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+const sc=sun.shadow.camera; sc.left=sc.bottom=-70; sc.right=sc.top=70; sc.near=1; sc.far=400; sun.shadow.bias=-0.0008; scene.add(sun); scene.add(sun.target);
+const controls=new PointerLockControls(camera,canvas);
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+const noise=makeNoise(1337);
+function fbm(x,y){ let v=0,a=1,f=1,s=0; for(let o=0;o<4;o++){ v+=a*noise(x*f,y*f); s+=a; a*=0.5; f*=2.1; } return v/s; }
+function getHeight(x,z){
+  const d=Math.hypot(x,z); let h=fbm(x*0.006,z*0.006)*24+fbm(x*0.03+100,z*0.03-50)*2.2+3;
+  const flat=THREE.MathUtils.smoothstep(d,10,45); h=h*flat+4*(1-flat); h-=THREE.MathUtils.smoothstep(d,250,310)*35; return h;
+}
+// 석탄 황야: 북동쪽 멀리 건조 지대
+const isWasteland=(x,z)=>x>100&&z<-50;
+const WORLD=640, SEG=160;
+const tgeo=new THREE.PlaneGeometry(WORLD,WORLD,SEG,SEG); tgeo.rotateX(-Math.PI/2);
+{
+  const pos=tgeo.attributes.position, col=new Float32Array(pos.count*3);
+  const c=new THREE.Color(), g1=new THREE.Color(0x3f8a3a), g2=new THREE.Color(0x7fb04f), sand=new THREE.Color(0xd9c48a), rock=new THREE.Color(0x6e6a66), snow=new THREE.Color(0xdde3ea), waste=new THREE.Color(0x6b5a48), waste2=new THREE.Color(0x3d3630);
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i), h=getHeight(x,z); pos.setY(i,h);
+    const slope=Math.abs(getHeight(x+1.5,z)-h)+Math.abs(getHeight(x,z+1.5)-h);
+    if(h<0.7) c.copy(sand); else if(h>21) c.copy(snow); else if(slope>2.2) c.copy(rock);
+    else if(isWasteland(x,z)) c.copy(waste).lerp(waste2,(noise(x*0.05,z*0.05)+1)/2);
+    else { c.copy(g1).lerp(g2,(noise(x*0.05,z*0.05)+1)/2); if(slope>1.4) c.lerp(rock,(slope-1.4)/0.8); }
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+  }
+  tgeo.setAttribute('color',new THREE.BufferAttribute(col,3)); tgeo.computeVertexNormals();
+}
+const terrain=new THREE.Mesh(tgeo,new THREE.MeshLambertMaterial({vertexColors:true})); terrain.receiveShadow=true; scene.add(terrain);
+const water=new THREE.Mesh(new THREE.PlaneGeometry(WORLD+200,WORLD+200),new THREE.MeshPhongMaterial({color:0x2a6fb0,transparent:true,opacity:0.78,shininess:90}));
+water.rotation.x=-Math.PI/2; scene.add(water);
+
+// ============================================================
+// 자원
+// ============================================================
+const resources=[];
+const MAT=c=>new THREE.MeshStandardMaterial({color:c,roughness:0.85});
+const G={ trunk:new THREE.CylinderGeometry(0.22,0.4,3.2,7), leaf:new THREE.DodecahedronGeometry(1.5,0), rock:new THREE.DodecahedronGeometry(1.1,0), ore:new THREE.DodecahedronGeometry(0.8,0) };
+const M={ trunk:MAT(0x6b4423), leaf1:MAT(0x2f7a2f), leaf2:MAT(0x3f9a3a), leaf3:MAT(0x5aa03c), rock:MAT(0x7d7a77), deadtrunk:MAT(0x4a3a30), iron:MAT(0x9a5a3c), coal:MAT(0x1e1e1e) };
+const RES_INFO={ tree:{name:'나무',item:'wood',per:3,hits:4,time:1.0}, rock:{name:'바위',item:'stone',per:3,hits:5,time:0.9}, iron:{name:'철 광석 노드',item:'iron_ore',per:1,hits:Infinity,time:0.8}, coal:{name:'석탄 노드',item:'coal',per:1,hits:Infinity,time:0.9} };
+function shadow(m){ m.castShadow=true; m.receiveShadow=true; return m; }
+function addRes(kind,x,z,rng){
+  const y=getHeight(x,z); const g=new THREE.Group(); g.position.set(x,y,z); const info=RES_INFO[kind];
+  if(kind==='tree'){
+    const s=0.8+rng()*0.7, dead=isWasteland(x,z);
+    const t=shadow(new THREE.Mesh(G.trunk,dead?M.deadtrunk:M.trunk)); t.position.y=1.6*s; t.scale.setScalar(s); g.add(t);
+    if(!dead){ const lm=[M.leaf1,M.leaf2,M.leaf3][Math.floor(rng()*3)]; for(let i=0;i<2;i++){ const l=shadow(new THREE.Mesh(G.leaf,lm)); l.position.set((rng()-.5)*.6,(3.2+i*1.3)*s,(rng()-.5)*.6); l.scale.setScalar(s*(1.1-i*0.3)); l.rotation.set(rng()*3,rng()*3,0); g.add(l); } }
+  } else if(kind==='rock'){
+    const r=shadow(new THREE.Mesh(G.rock,M.rock)); const s=0.8+rng()*0.9; r.scale.set(s*1.3,s*0.8,s); r.rotation.set(rng()*3,rng()*3,rng()*3); r.position.y=0.4*s; g.add(r);
+  } else {
+    const m=M[kind]; const n=4+Math.floor(rng()*3);
+    for(let i=0;i<n;i++){ const o=shadow(new THREE.Mesh(G.ore,m)); const a=rng()*Math.PI*2, d=rng()*1.4; o.position.set(Math.cos(a)*d,0.3+rng()*0.4,Math.sin(a)*d); o.rotation.set(rng()*3,rng()*3,rng()*3); o.scale.setScalar(0.7+rng()*0.7); g.add(o); }
+    const base=shadow(new THREE.Mesh(G.rock,M.rock)); base.scale.set(2.2,0.5,2.2); base.position.y=0.05; g.add(base);
+  }
+  const res={id:resources.length,kind,item:info.item,name:info.name,per:info.per,hits:info.hits,time:info.time,mesh:g,pos:g.position.clone(),alive:true,miner:null};
+  g.userData.res=res; resources.push(res); scene.add(g); return res;
+}
+{
+  const rng=mulberry32(4242);
+  const ok=(x,z,minH=1.2,minD=6)=>{ const h=getHeight(x,z); return h>minH&&Math.hypot(x,z)>minD&&Math.abs(getHeight(x+2,z)-h)<2.4&&Math.abs(getHeight(x,z+2)-h)<2.4; };
+  const landNear=(x,z)=>{ for(let r=0;r<40;r+=2) for(let a=0;a<Math.PI*2;a+=Math.PI/6){ const nx=x+Math.cos(a)*r, nz=z+Math.sin(a)*r; if(ok(nx,nz,1.5,12)) return [nx,nz]; } return [x,z]; };
+  for(const [x,z] of [[22,10],[-28,-18],[12,-30]]){ const [nx,nz]=landNear(x,z); addRes('iron',nx,nz,rng); }
+  let p=0,tries=0; while(p<14&&tries++<600){ const x=(rng()-.5)*460, z=(rng()-.5)*460; if(!isWasteland(x,z)&&ok(x,z,1.2,40)){ addRes('iron',x,z,rng); p++; } }
+  p=0;tries=0; while(p<10&&tries++<800){ const x=110+rng()*150, z=-60-rng()*170; if(ok(x,z,1.2,40)){ addRes('coal',x,z,rng); p++; } }
+  for(let i=0;i<190;i++){ const x=(rng()-.5)*480, z=(rng()-.5)*480; if(ok(x,z,1.5,14)) addRes('tree',x,z,rng); }
+  for(let i=0;i<110;i++){ const x=(rng()-.5)*480, z=(rng()-.5)*480; if(ok(x,z,0.9,9)) addRes('rock',x,z,rng); }
+  for(const [x,z] of [[9,7],[-8,6],[6,-9],[-6,-8],[14,-4]]){ const [nx,nz]=landNear(x,z); addRes('rock',nx,nz,rng); }
+  for(const [x,z] of [[-12,12],[13,13],[-13,-12]]){ const [nx,nz]=landNear(x,z); addRes('tree',nx,nz,rng); }
+}
+
+// ============================================================
+// 기계 메시
+// ============================================================
+function box(w,h,d,color,y=0,x=0,z=0,emissive){ const m=shadow(new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:0.6,metalness:0.3,emissive:emissive||0x000000,emissiveIntensity:0}))); m.position.set(x,y,z); return m; }
+function cyl(rt,rb,h,color,y=0,x=0,z=0,seg=12){ const m=shadow(new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),new THREE.MeshStandardMaterial({color,roughness:0.5,metalness:0.4}))); m.position.set(x,y,z); return m; }
+function glow(w,h,d,y,x,z){ return box(w,h,d,0x3a1a08,y,x,z,0xff5a00); }
+function buildMesh(type){
+  const g=new THREE.Group(); const a={};
+  switch(type){
+    case 'hand_crank': { g.add(box(1.2,0.8,0.8,0x7a5230,0.4)); a.wheel=cyl(0.6,0.6,0.15,0x9a7040,0.9,0,0.5); a.wheel.rotation.x=Math.PI/2; g.add(a.wheel); const handle=box(0.1,0.1,0.5,0x333333,0.9,0.45,0.75); g.add(handle); } break;
+    case 'crusher': g.add(box(2.2,1.2,1.8,0x6d7079,0.6)); a.r1=cyl(0.4,0.4,1.6,0x9aa0a8,1.5,-0.45,0); a.r1.rotation.x=Math.PI/2; g.add(a.r1); a.r2=cyl(0.4,0.4,1.6,0x9aa0a8,1.5,0.45,0); a.r2.rotation.x=Math.PI/2; g.add(a.r2); g.add(box(2.3,0.2,1.9,0x3d4047,2.0)); break;
+    case 'sorter': { const b=box(2.4,0.3,1.4,0x7a7f88,1.0); b.rotation.z=0.25; g.add(b); g.add(box(0.2,1.2,1.4,0x4d5058,0.6,-1.1,0)); g.add(box(0.2,0.8,1.4,0x4d5058,0.4,1.1,0)); a.tray=b; } break;
+    case 'kiln': { const dome=shadow(new THREE.Mesh(new THREE.SphereGeometry(1.2,12,8,0,Math.PI*2,0,Math.PI/2),new THREE.MeshStandardMaterial({color:0x8a7f72,roughness:0.95}))); dome.position.y=0.1; g.add(dome); a.light=glow(0.6,0.5,0.1,0.4,0,1.15); g.add(a.light); } break;
+    case 'bloomery': g.add(cyl(0.7,0.9,2.2,0x7d7266,1.1)); a.light=glow(0.5,0.4,0.1,0.5,0,0.86); g.add(a.light); g.add(cyl(0.3,0.3,0.6,0x5a524a,2.5)); break;
+    case 'blast_furnace': g.add(cyl(0.9,1.3,3.4,0x4a4f58,1.7)); g.add(cyl(0.5,0.5,1.4,0x33373d,4.1)); g.add(box(2.6,0.4,2.6,0x5f5a55,0.2)); a.light=glow(0.8,0.6,0.1,0.8,0,1.3); g.add(a.light); break;
+    case 'converter': { const pear=shadow(new THREE.Mesh(new THREE.SphereGeometry(1.0,12,10),new THREE.MeshStandardMaterial({color:0xc2622a,roughness:0.6,metalness:0.4}))); pear.position.y=1.4; pear.scale.set(1,1.3,1); pear.rotation.z=0.35; g.add(pear); g.add(box(1.6,0.6,1.6,0x4a4f58,0.3)); a.light=glow(0.5,0.5,0.1,2.3,-0.4,0.6); g.add(a.light); a.fan=cyl(0.4,0.4,0.2,0x9aa0a8,0.8,1.1,0); a.fan.rotation.z=Math.PI/2; g.add(a.fan); } break;
+    case 'rolling_mill': g.add(box(3.2,1.0,1.6,0x4f5a6b,0.5)); a.r1=cyl(0.35,0.35,1.5,0xb8c0c8,1.3,-0.6,0); a.r1.rotation.x=Math.PI/2; g.add(a.r1); a.r2=cyl(0.35,0.35,1.5,0xb8c0c8,1.3,0.6,0); a.r2.rotation.x=Math.PI/2; g.add(a.r2); g.add(box(3.3,0.15,1.7,0x2f3640,1.75)); break;
+    case 'steam_engine': { g.add(box(2.6,1.2,1.6,0x3a3f47,0.6)); const boiler=cyl(0.6,0.6,2.2,0x7a2e22,0.9,-0.6,0); boiler.rotation.z=Math.PI/2; g.add(boiler); g.add(cyl(0.18,0.2,1.6,0x2a2d33,2.0,-1.2,0)); a.wheel=cyl(0.8,0.8,0.2,0x9aa0a8,1.4,1.0,0.9); a.wheel.rotation.x=Math.PI/2; g.add(a.wheel); a.light=glow(0.6,0.4,0.1,0.6,0.3,0.81); g.add(a.light); } break;
+    case 'miner': { g.add(box(2.6,1.0,2.6,0xd9822b,0.5)); g.add(box(0.9,3.2,0.9,0x4f5560,2.6,-0.6,-0.6)); a.gear=cyl(0.7,0.7,0.3,0x9aa3ad,4.3,-0.6,-0.6); g.add(a.gear); const drill=shadow(new THREE.Mesh(new THREE.ConeGeometry(0.45,1.4,8),new THREE.MeshStandardMaterial({color:0x8a8f99,metalness:0.6}))); drill.rotation.x=Math.PI; drill.position.set(0.5,1.5,0.5); g.add(drill); a.drill=drill; } break;
+    case 'storage': g.add(box(2.2,1.5,2.2,0x8a6a44,0.75)); g.add(box(2.3,0.2,2.3,0x5a4630,1.6)); g.add(box(0.1,0.9,1.2,0xf58b1f,0.75,1.12,0)); break;
+  }
+  const smoke=new THREE.Mesh(new THREE.SphereGeometry(0.5,6,5),new THREE.MeshBasicMaterial({color:0x222222,transparent:true,opacity:0.6})); smoke.visible=false; smoke.position.y=2.5; g.add(smoke); a.smoke=smoke;
+  g.userData.anim=a; return g;
+}
+
+// ============================================================
+// 기계 시뮬레이션
+// ============================================================
+class Machine{
+  constructor(type,pos,rot=0,node=null){
+    this.type=type; this.cfg=MACHINES[type]; this.pos=pos.clone(); this.rot=rot; this.node=node;
+    this.input={}; this.output={}; this.fuel={}; this.burning=null; this.temp=20; this.timer=0; this.working=false; this.dur=100; this.broken=false; this.overheat=false; this.spin=0; this.powerFactor=0; this.load=0; this.capNow=0; this.reason='';
+    this.recipe=this.cfg.recipes?Object.keys(this.cfg.recipes)[0]:null;
+    this.cap=type==='storage'?500:60; if(type==='storage') this.output=this.input;
+    this.mesh=buildMesh(type); this.mesh.position.copy(pos); this.mesh.rotation.y=rot; this.mesh.userData.machine=this; scene.add(this.mesh);
+    if(node) node.miner=this;
+  }
+  get name(){ return this.cfg.name; }
+  get isThermal(){ return this.cfg.cat==='thermal'; }
+  get isPower(){ return this.cfg.cat==='power'; }
+  get usesFuel(){ return this.isThermal||!!this.cfg.fuel; }
+  currentRecipe(){
+    if(!this.cfg.recipes) return null;
+    if(this.cfg.select) return this.cfg.recipes[this.recipe];
+    for(const k in this.cfg.recipes){ const r=this.cfg.recipes[k]; if(Object.keys(r.in).some(i=>this.input[i]>0)) return r; }
+    return this.cfg.recipes[this.recipe];
+  }
+  acceptsInto(item){
+    if(this.type==='storage') return 'input';
+    if(this.usesFuel&&FUELS[item]) return 'fuel';
+    if(this.cfg.recipes){ const rs=this.cfg.select?[this.cfg.recipes[this.recipe]]:Object.values(this.cfg.recipes); if(rs.some(r=>r.in[item])) return 'input'; }
+    return null;
+  }
+  accepts(item){ return !!this.acceptsInto(item); }
+  room(slot){ return total(this[slot])<(slot==='fuel'?20:this.cap); }
+  inputRoom(){ return total(this.input)<this.cap; }
+  capacity(){ if(!this.isPower||this.broken) return 0; if(this.type==='hand_crank') return this.spin>0?this.cfg.power:0; return this.burning?this.cfg.power:0; }
+  wantsPower(){ if(this.broken||!this.cfg.demand) return false; if(this.type==='miner') return total(this.output)<this.cap; const r=this.currentRecipe(); if(!r) return false; if(this.cfg.airBonus) return hasAll(this.input,r.in); return hasAll(this.input,r.in)&&total(this.output)+total(r.out)<=this.cap; }
+  updateFuel(dt){
+    if(this.burning){ this.burning.left-=dt; if(this.burning.left<=0) this.burning=null; }
+    if(!this.burning){ const f=Object.keys(this.fuel).find(k=>this.fuel[k]>0); if(f){ takeAll(this.fuel,{[f]:1}); this.burning={item:f,left:FUELS[f].time}; } }
+  }
+  update(dt){
+    this.working=false; const a=this.mesh.userData.anim;
+    if(this.broken){ this.temp+=(20-this.temp)*Math.min(1,dt*0.3); this.reason='고장 — 수리 필요'; a.smoke.visible=true; a.smoke.position.y=2.5+Math.sin(S.playTime*2)*0.3; if(a.light) a.light.material.emissiveIntensity=0; return; }
+    a.smoke.visible=false;
+    if(this.usesFuel) this.updateFuel(dt);
+    if(this.isThermal){
+      let target=20; if(this.burning){ target=FUELS[this.burning.item].heat; if(this.cfg.airBonus&&this.powerFactor>0) target+=this.cfg.airBonus*this.powerFactor; }
+      const rate=this.burning?140:70; const diff=target-this.temp; this.temp+=clamp(diff,-rate*dt,rate*dt);
+      if(this.temp>this.cfg.maxTemp){ this.dur-=2.5*dt; this.overheat=true; } else this.overheat=false;
+    }
+    if(this.type==='hand_crank'){ this.spin=Math.max(0,this.spin-dt); if(this.spin>0){ this.working=true; a.wheel.rotation.z+=dt*6; } this.reason=this.spin>0?`회전 중 (${this.spin.toFixed(0)}s 남음) · 부하 ${this.load}/${this.cfg.power}kW`:'멈춤 — 좌클릭 유지로 돌리기'; }
+    else if(this.type==='steam_engine'){ if(this.burning){ this.working=true; a.wheel.rotation.z+=dt*5; } this.reason=this.burning?`가동 중 · 부하 ${this.load}/${this.cfg.power}kW`:'연료 없음'; }
+    else if(this.type==='miner'){
+      if(total(this.output)>=this.cap) this.reason='출력 가득 참'; else if(this.powerFactor<=0) this.reason='동력 없음 (회전축 연결 필요, 5kW)';
+      else { this.working=true; this.timer+=dt*this.powerFactor; if(this.timer>=2){ this.timer-=2; addAll(this.output,{[this.node.item]:1}); } this.reason=`채굴 중 (동력 ${Math.round(this.powerFactor*100)}%)`; }
+    } else if(this.cfg.recipes){
+      const r=this.currentRecipe();
+      if(!r||!hasAll(this.input,r.in)){ const anyIn=Object.keys(this.input).length>0; this.reason=anyIn?'재료 부족: '+Object.entries(r?.in||{}).map(([k,v])=>`${iname(k)} ${v}`).join(', '):'대기 — 재료 넣기: '+Object.values(this.cfg.recipes).map(rr=>Object.entries(rr.in).map(([k,v])=>`${iname(k)} ${v}`).join('+')).join(' 또는 '); this.timer=0; }
+      else if(total(this.output)+total(r.out)>this.cap){ this.reason='출력 가득 참'; }
+      else if(r.temp&&this.temp<r.temp){ this.reason=`온도 부족 — ${r.temp}°C 필요 (현재 ${Math.round(this.temp)}°C)`; this.timer=0; }
+      else if(this.cfg.demand&&this.powerFactor<=0){ this.reason=`동력 없음 — ${this.cfg.demand}kW 필요 (회전축 연결)`; this.timer=0; }
+      else { const f=this.cfg.demand?this.powerFactor:1; this.working=true; this.timer+=dt*f; this.reason=`가동 중 ${Math.round(this.timer/r.time*100)}%`+(f<1?` (동력 부족 — ${Math.round(f*100)}% 속도)`:''); if(this.timer>=r.time){ this.timer=0; takeAll(this.input,r.in); addAll(this.output,r.out); } }
+    }
+    if(this.working&&this.cfg.wear){ let w=this.cfg.wear; if(this.isThermal) w*=0.5+this.temp/this.cfg.maxTemp; this.dur-=w*dt; }
+    if(this.dur<=0){ this.dur=0; this.broken=true; this.burning=null; toast(`⚠ ${this.name} 고장! 수리가 필요해요`); }
+    const spd=this.working?dt*5*(this.cfg.demand?Math.max(0.2,this.powerFactor):1):0;
+    if(a.r1){ a.r1.rotation.y+=spd; a.r2.rotation.y-=spd; }
+    if(a.tray) a.tray.position.x=this.working?Math.sin(S.playTime*14)*0.06:0;
+    if(a.gear) a.gear.rotation.y+=spd; if(a.drill) a.drill.position.y=this.working?1.5+Math.sin(S.playTime*8)*0.2:1.5;
+    if(a.fan) a.fan.rotation.x+=this.powerFactor>0?dt*12:0;
+    if(a.light){ const t=this.isThermal?clamp((this.temp-200)/1300,0,1):(this.burning?0.8:0); a.light.material.emissiveIntensity=t*(this.overheat?2.5+Math.sin(S.playTime*20):1.6); }
+  }
+  dispose(){ scene.remove(this.mesh); if(this.node) this.node.miner=null; }
+}
+function updatePower(){
+  for(const m of S.machines) m.powerFactor=0;
+  for(const src of S.machines){ if(!src.isPower) continue; const cap=src.capacity(); const targets=S.shafts.filter(s=>s.from===src).map(s=>s.to);
+    const load=targets.reduce((a,m)=>a+(m.wantsPower()?m.cfg.demand:0),0); src.load=load; src.capNow=cap;
+    const f=cap<=0?0:(load>0?Math.min(1,cap/load):1); for(const m of targets) m.powerFactor=Math.max(m.powerFactor,f); }
+}
+
+// ---------- 링크: 컨베이어 / 회전축 ----------
+const beltMat=new THREE.MeshStandardMaterial({color:0x3a3f47,roughness:0.8}), stripeMat=new THREE.MeshStandardMaterial({color:0xf58b1f,roughness:0.6}), shaftMat=new THREE.MeshStandardMaterial({color:0xb08a5a,roughness:0.6}), shaftMat2=new THREE.MeshStandardMaterial({color:0x5a4630});
+const beltItemGeo=new THREE.BoxGeometry(0.45,0.45,0.45);
+class Link{
+  constructor(kind,from,to){ this.kind=kind; this.from=from; this.to=to; this.a=from.pos.clone(); this.b=to.pos.clone(); this.length=Math.max(1,this.a.distanceTo(this.b)); this.mesh=new THREE.Group(); this.mesh.userData.link=this; this.segs=[]; this.build(); scene.add(this.mesh); }
+  get cost(){ return {wood:Math.max(1,Math.ceil(this.length/2))}; }
+  pointAt(t,lift){ const p=this.a.clone().lerp(this.b,t); p.y=Math.max(getHeight(p.x,p.z),-0.3)+lift; return p; }
+  build(){
+    const n=Math.max(1,Math.round(this.length/2)); const lift=this.kind==='conveyor'?0.55:0.9;
+    for(let i=0;i<n;i++){ const p0=this.pointAt(i/n,lift), p1=this.pointAt((i+1)/n,lift); const mid=p0.clone().lerp(p1,0.5); const seg=new THREE.Group(); seg.position.copy(mid); seg.lookAt(p1); const len=p0.distanceTo(p1)+0.05;
+      if(this.kind==='conveyor'){ seg.add(shadow(new THREE.Mesh(new THREE.BoxGeometry(0.9,0.14,len),beltMat))); const st=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.02,len),stripeMat); st.position.set(0.42,0.08,0); seg.add(st); const st2=st.clone(); st2.position.x=-0.42; seg.add(st2); for(let k=0;k<2;k++){ const leg=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.5,0.12),beltMat); leg.position.set(k?0.35:-0.35,-0.3,0); seg.add(leg); } }
+      else { const rod=shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,len,8),shaftMat)); rod.rotation.x=Math.PI/2; seg.add(rod); const knob=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.5,0.1),shaftMat2); rod.add(knob); this.segs.push(rod); const post=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.9,0.15),shaftMat2); post.position.set(0,-0.45,0); seg.add(post); }
+      this.mesh.add(seg); }
+  }
+  dispose(){ scene.remove(this.mesh); }
+}
+class Conveyor extends Link{
+  constructor(from,to,items=[]){ super('conveyor',from,to); this.items=items; this.pullTimer=0; this.speed=3.2; this.capItems=Math.max(1,Math.floor(this.length/1.4)); this.itemMeshes=[]; }
+  update(dt){
+    const gap=1.0/this.length;
+    for(let i=0;i<this.items.length;i++){ const it=this.items[i]; const maxT=i===0?1:this.items[i-1].t-gap; it.t=Math.min(it.t+dt*this.speed/this.length,Math.max(it.t,maxT)); }
+    if(this.items.length&&this.items[0].t>=0.999){ const it=this.items[0]; const slot=this.to.acceptsInto(it.item); if(slot&&this.to.room(slot)){ addAll(this.to[slot],{[it.item]:1}); this.items.shift(); } }
+    this.pullTimer+=dt;
+    if(this.pullTimer>=0.5&&this.items.length<this.capItems&&(this.items.length===0||this.items[this.items.length-1].t>gap)){ this.pullTimer=0; const item=Object.keys(this.from.output).find(k=>this.from.output[k]>0&&this.to.accepts(k)); if(item){ takeAll(this.from.output,{[item]:1}); this.items.push({item,t:0}); } }
+    while(this.itemMeshes.length<this.items.length){ const m=new THREE.Mesh(beltItemGeo,new THREE.MeshStandardMaterial({color:0xffffff})); this.mesh.add(m); this.itemMeshes.push(m); }
+    this.itemMeshes.forEach((m,i)=>{ const it=this.items[i]; if(!it){ m.visible=false; return; } m.visible=true; m.material.color.set(ITEMS[it.item].color); m.position.copy(this.pointAt(it.t,0.85)); });
+  }
+}
+class Shaft extends Link{
+  constructor(from,to){ super('shaft',from,to); }
+  update(dt){ const on=this.from.capacity()>0; for(const r of this.segs) r.rotation.y+=on?dt*8:0; }
+}
+function removeMachine(m){
+  addAll(S.inv,m.cfg.cost); for(const bag of [m.input,m.fuel]) for(const k in bag) invAdd(k,bag[k]); if(m.output!==m.input) for(const k in m.output) invAdd(k,m.output[k]); S.invDirty=true;
+  for(const c of [...S.conveyors]) if(c.from===m||c.to===m) removeLink(c); for(const s of [...S.shafts]) if(s.from===m||s.to===m) removeLink(s);
+  m.dispose(); S.machines.splice(S.machines.indexOf(m),1); toast(`${m.name} 철거 — 자재 환불`);
+}
+function removeLink(l){ addAll(S.inv,l.cost); if(l.items) for(const it of l.items) invAdd(it.item,1); S.invDirty=true; l.dispose(); const arr=l.kind==='conveyor'?S.conveyors:S.shafts; arr.splice(arr.indexOf(l),1); }
+
+// ============================================================
+// 플레이어
+// ============================================================
+const P={pos:camera.position,vel:new THREE.Vector3(),onGround:false,eye:1.7};
+function spawn(){ P.pos.set(0,getHeight(0,0)+P.eye,0); P.vel.set(0,0,0); camera.rotation.set(0,0,0); }
+spawn();
+const _f=new THREE.Vector3(), _r=new THREE.Vector3(), _d=new THREE.Vector3();
+function updatePlayer(dt){
+  const canMove=controls.isLocked&&!S.panel;
+  camera.getWorldDirection(_f); _f.y=0; _f.normalize(); _r.crossVectors(_f,camera.up).normalize(); _d.set(0,0,0);
+  if(canMove){ if(keys.KeyW)_d.add(_f); if(keys.KeyS)_d.sub(_f); if(keys.KeyD)_d.add(_r); if(keys.KeyA)_d.sub(_r); }
+  const moving=_d.lengthSq()>0; if(moving)_d.normalize();
+  const sprint=canMove&&keys.ShiftLeft&&moving&&S.stamina>0; const speed=sprint?10:5.5;
+  if(sprint) S.stamina=Math.max(0,S.stamina-16*dt); else if(!S.cranking) S.stamina=Math.min(100,S.stamina+9*dt);
+  P.vel.x=_d.x*speed; P.vel.z=_d.z*speed; P.vel.y-=28*dt;
+  if(canMove&&keys.Space&&P.onGround){ P.vel.y=9.5; P.onGround=false; }
+  P.pos.addScaledVector(P.vel,dt); P.pos.x=clamp(P.pos.x,-300,300); P.pos.z=clamp(P.pos.z,-300,300);
+  for(const m of S.machines){ const dx=P.pos.x-m.pos.x, dz=P.pos.z-m.pos.z, d=Math.hypot(dx,dz); if(d<1.9&&d>0.001&&P.pos.y<m.pos.y+2.4){ P.pos.x=m.pos.x+dx/d*1.9; P.pos.z=m.pos.z+dz/d*1.9; } }
+  const g=Math.max(getHeight(P.pos.x,P.pos.z),-0.9)+P.eye; if(P.pos.y<=g){ P.pos.y=g; P.vel.y=0; P.onGround=true; } else P.onGround=false;
+  let hot=0; for(const m of S.machines) if(m.isThermal&&m.temp>700){ const d=Math.hypot(P.pos.x-m.pos.x,P.pos.z-m.pos.z); if(d<3.5) hot=Math.max(hot,(m.temp-700)/1200*(1-d/3.5)); }
+  S.heat=clamp(S.heat+(hot>0?hot*30*dt:-20*dt),0,100);
+  if(S.heat>=100) S.hp-=6*dt; else if(S.hp<100) S.hp=Math.min(100,S.hp+1.5*dt);
+  if(S.hp<=0){ S.hp=100; S.heat=0; spawn(); toast('열사병으로 쓰러졌습니다… 시작 지점에서 부활'); }
+}
+
+// ============================================================
+// 시선 / 채굴 / 크랭크
+// ============================================================
+const ray=new THREE.Raycaster(); ray.far=14; let look=null; const _cands=[];
+function updateLook(){
+  ray.setFromCamera({x:0,y:0},camera); _cands.length=0; _cands.push(terrain);
+  for(const r of resources) if(r.alive&&r.pos.distanceToSquared(P.pos)<400) _cands.push(r.mesh);
+  for(const m of S.machines) if(m.pos.distanceToSquared(P.pos)<400) _cands.push(m.mesh);
+  for(const c of [...S.conveyors,...S.shafts]) if(c.a.distanceToSquared(P.pos)<2500||c.b.distanceToSquared(P.pos)<2500) _cands.push(c.mesh);
+  const hits=ray.intersectObjects(_cands,true); look=null;
+  if(hits.length){ const h=hits[0]; let o=h.object; while(o&&!(o.userData.res||o.userData.machine||o.userData.link)&&o!==terrain) o=o.parent;
+    look={point:h.point,dist:h.distance,res:o?.userData.res,machine:o?.userData.machine,link:o?.userData.link,terrain:o===terrain}; }
+}
+function updateMining(dt){
+  const m=S.mining, prog=$('#prog'); const active=!S.build&&S.mouseDown&&controls.isLocked&&!S.panel&&look&&look.dist<4.5;
+  S.cranking=false;
+  if(active&&look.machine?.type==='hand_crank'&&!look.machine.broken){ const hc=look.machine; if(S.stamina>0){ S.cranking=true; S.stamina=Math.max(0,S.stamina-12*dt); hc.spin=Math.min(25,hc.spin+dt*2.5); hc.dur-=0.15*dt; } prog.style.display='block'; prog.firstElementChild.style.width=(hc.spin/25*100)+'%'; m.target=null; return; }
+  const target=(active&&look.res)?look.res:null;
+  if(target!==m.target){ m.target=target; m.progress=0; }
+  if(!target){ prog.style.display='none'; return; }
+  m.progress+=dt/target.time; prog.style.display='block'; prog.firstElementChild.style.width=(m.progress*100)+'%';
+  if(m.progress>=1){ m.progress=0; invAdd(target.item,target.per); toast(`+${target.per} ${iname(target.item)}`);
+    if(target.hits!==Infinity){ target.hits--; if(target.hits<=0){ target.alive=false; scene.remove(target.mesh); S.removed.add(target.id); m.target=null; } } }
+}
+function promptText(){
+  if(S.build==='conveyor'||S.build==='shaft'){ const nm=MACHINES[S.build].name; return S.linkFrom?`${nm}: 도착 기계를 클릭 (${S.linkFrom.name}에서) · 우클릭 취소`:`${nm}: ${S.build==='shaft'?'동력원':'출발 기계'}을 클릭 · 우클릭 취소`; }
+  if(S.build) return `[좌클릭] ${MACHINES[S.build].name} 설치 · [R] 회전 · [Q] 취소`;
+  if(!look||look.dist>6) return '';
+  if(look.res) return `[좌클릭 유지] ${look.res.name} 채굴${look.res.miner?' (채굴기 설치됨)':''}`;
+  if(look.machine){ const m=look.machine; let s=`[E] ${m.name} 열기 · [X] 철거<br><small>`; if(m.type==='hand_crank') s+='[좌클릭 유지] 크랭크 돌리기 · '; if(m.isThermal) s+=`${Math.round(m.temp)}°C${m.overheat?' ⚠과열':''} · `; s+=`내구 ${Math.round(m.dur)}%${m.broken?' ⚠고장':''} · ${m.reason}`; return s+'</small>'; }
+  if(look.link) return `${look.link.kind==='conveyor'?`컨베이어 (${look.link.items.length}개 운반 중)`:`회전축 (${look.link.from.name} → ${look.link.to.name})`} · [X] 철거`;
+  return '';
+}
+
+// ============================================================
+// 건설
+// ============================================================
+function selectBuild(type){
+  cancelBuild(); S.build=type; S.linkFrom=null; $('#buildmode').style.display='block'; $('#buildmode').textContent=`건설: ${MACHINES[type].name}`;
+  if(MACHINES[type].cat!=='link'){ S.ghost=buildMesh(type); S.ghostMats=[]; S.ghost.traverse(o=>{ if(o.isMesh){ o.material=new THREE.MeshBasicMaterial({color:0x33ff66,transparent:true,opacity:0.45,depthWrite:false}); o.castShadow=false; S.ghostMats.push(o.material); } }); S.ghost.userData.anim.smoke.visible=false; scene.add(S.ghost); }
+}
+function cancelBuild(){ if(S.ghost){ scene.remove(S.ghost); S.ghost=null; } S.build=null; S.linkFrom=null; $('#buildmode').style.display='none'; }
+function placementCheck(){
+  const type=S.build; if(!type||MACHINES[type].cat==='link'||!look) return null;
+  if(MACHINES[type].node){ if(look.res&&look.res.hits===Infinity&&!look.res.miner&&look.dist<10) return {pos:look.res.pos.clone(),node:look.res}; return null; }
+  if(look.terrain&&look.dist<12&&look.point.y>0.3){ const p=look.point.clone(); if(S.machines.some(m=>m.pos.distanceTo(p)<3.0)) return null; if(resources.some(r=>r.alive&&r.hits===Infinity&&r.pos.distanceTo(p)<2.6)) return null; return {pos:p,node:null}; }
+  return null;
+}
+function updateGhost(){
+  if(!S.ghost) return; const pc=placementCheck(); const afford=hasAll(S.inv,MACHINES[S.build].cost);
+  if(pc){ S.ghost.visible=true; S.ghost.position.copy(pc.pos); S.ghost.rotation.y=S.ghostRot; } else if(look?.point){ S.ghost.visible=true; S.ghost.position.copy(look.point); S.ghost.rotation.y=S.ghostRot; } else S.ghost.visible=false;
+  const c=(pc&&afford)?0x33ff66:0xff3344; for(const m of S.ghostMats) m.color.setHex(c);
+}
+function tryPlace(){
+  const type=S.build, cfg=MACHINES[type];
+  if(cfg.cat==='link'){
+    if(!look?.machine||look.dist>12){ toast('기계를 조준하고 클릭하세요'); return; }
+    const m=look.machine;
+    if(!S.linkFrom){
+      if(type==='shaft'&&!m.isPower){ toast('회전축은 동력원(손 크랭크·증기기관)에서 시작해요'); return; }
+      if(type==='conveyor'&&!(m.cfg.recipes||m.type==='storage'||m.type==='miner')){ toast('출력이 있는 기계에서 시작하세요'); return; }
+      S.linkFrom=m; toast(`출발: ${m.name}`); return; }
+    const to=m; if(to===S.linkFrom){ toast('같은 기계입니다'); return; }
+    if(type==='shaft'&&!to.cfg.demand){ toast(`${to.name}은(는) 동력을 쓰지 않아요`); return; }
+    if(type==='conveyor'&&!(to.cfg.recipes||to.type==='storage'||to.cfg.fuel)){ toast(`${to.name}은(는) 입력을 받지 않아요`); return; }
+    const arr=type==='shaft'?S.shafts:S.conveyors; if(arr.some(l=>l.from===S.linkFrom&&l.to===to)){ toast('이미 연결됨'); return; }
+    const tmp=type==='shaft'?new Shaft(S.linkFrom,to):new Conveyor(S.linkFrom,to); if(!hasAll(S.inv,tmp.cost)){ tmp.dispose(); toast(`목재 ${tmp.cost.wood}개 필요`); return; }
+    takeAll(S.inv,tmp.cost); S.invDirty=true; arr.push(tmp); toast(`${cfg.name} 연결: ${S.linkFrom.name} → ${to.name}`); S.linkFrom=null; return;
+  }
+  const pc=placementCheck(); if(!pc){ toast(cfg.node?'광석 노드 위에만 설치할 수 있어요':'여기엔 설치할 수 없어요'); return; }
+  if(!hasAll(S.inv,cfg.cost)){ toast('자재 부족: '+Object.entries(cfg.cost).map(([k,v])=>`${iname(k)} ${v}`).join(', ')); return; }
+  takeAll(S.inv,cfg.cost); S.invDirty=true; S.machines.push(new Machine(type,pc.pos,S.ghostRot,pc.node)); toast(`${cfg.name} 설치 완료`);
+  if(!hasAll(S.inv,cfg.cost)) cancelBuild();
+}
+
+// ============================================================
+// UI
+// ============================================================
+const ui=$('#ui'), uiPanel=$('#uiPanel'), menu=$('#menu');
+function lock(){ const p=canvas.requestPointerLock?.(); if(p&&p.catch) p.catch(()=>showMenu('화면을 클릭해 다시 시작하세요')); }
+function showMenu(msg=''){ menu.style.display='flex'; $('#menuMsg').textContent=msg; $('#btnStart').textContent=S.started?'계속하기':'게임 시작'; }
+function openPanel(kind,machine=null){ S.panel=kind; S.openMachine=machine; S.mouseDown=false; ui.style.display='flex'; renderPanel(); if(controls.isLocked) controls.unlock(); }
+function closePanel(){ S.panel=null; S.openMachine=null; ui.style.display='none'; lock(); }
+const io=(bag)=>Object.entries(bag).map(([i,v])=>`${iname(i)} ${v}`).join(' + ');
+function codexHtml(){
+  let rows='';
+  for(const k of BUILD_ORDER){ const c=MACHINES[k]; if(!c.recipes) continue; for(const rk in c.recipes){ const r=c.recipes[rk]; rows+=`<tr><td><b>${c.name}</b><br><span class="tag ${c.cat==='thermal'?'th':'me'}">${c.cat==='thermal'?'열':'기계'}</span></td><td>${io(r.in)}</td><td>→ ${io(r.out)}</td><td>${condStr(r,c)}</td></tr>`; } }
+  for(const k in HAND_RECIPES){ const r=HAND_RECIPES[k]; rows+=`<tr><td><b>손 (Tab)</b></td><td>${io(r.in)}</td><td>→ ${io(r.out)}</td><td>즉시</td></tr>`; }
+  const fuels=Object.entries(FUELS).map(([k,f])=>`<tr><td><b>${iname(k)}</b></td><td colspan="2">최고 ${f.heat}°C</td><td>${f.time}s 연소</td></tr>`).join('');
+  const lim=Object.values(MACHINES).filter(c=>c.maxTemp).map(c=>`<tr><td><b>${c.name}</b></td><td colspan="3">한계 ${c.maxTemp}°C — 넘기면 과열 마모</td></tr>`).join('');
+  return `<p style="font-size:12px;color:#aaa;margin:0 0 8px">모든 레시피는 처음부터 공개돼 있습니다. 설계도는 없어요. 재료와 조건만 갖추면 됩니다.</p><table class="codex"><tr><th>장치</th><th>입력</th><th>출력</th><th>조건</th></tr>${rows}</table><h3>연료</h3><table class="codex">${fuels}</table><h3>장치 온도 한계</h3><table class="codex">${lim}</table>`;
+}
+function renderPanel(){
+  if(S.panel==='craft'){
+    const tabs=`<div class="tabs"><button data-tab="inv" class="${S.tab==='inv'?'on':''}">소지품 & 손작업</button><button data-tab="codex" class="${S.tab==='codex'?'on':''}">레시피 도감</button></div>`;
+    let body='';
+    if(S.tab==='inv'){ const rows=Object.entries(HAND_RECIPES).map(([k,r])=>{ const ok=hasAll(S.inv,r.in); let max=0; while(max<10&&Object.entries(r.in).every(([i,v])=>cnt(i)>=v*(max+1))) max++;
+        return `<div class="row ${ok?'':'off'}"><div><div class="nm">${r.name} <span style="color:#888;font-weight:400">×${Object.values(r.out)[0]}</span></div><div class="cost">${costStr(r.in)}</div></div><div style="display:flex;gap:4px"><button data-craft="${k}" data-n="1" ${ok?'':'disabled'}>제작</button><button data-craft="${k}" data-n="${max}" ${max>1?'':'disabled'} class="ghost">×${max||10}</button></div></div>`; }).join('');
+      body=`<div class="cols"><div><h3>소지품</h3><div class="chips">${bagStr(S.inv)}</div></div><div><h3>손작업 (괴철 망치질)</h3>${rows}<p style="font-size:12px;color:#888">그 외 모든 공정은 기계가 필요합니다. 도감 탭에서 조건을 확인하세요.</p></div></div>`; }
+    else body=codexHtml();
+    uiPanel.innerHTML=`<h2>인벤토리 <small>Tab / Esc 닫기</small></h2>${tabs}${body}`;
+  } else if(S.panel==='build'){
+    const cards=BUILD_ORDER.map((k,i)=>{ const b=MACHINES[k]; const tag=b.cat==='thermal'?'<span class="tag th">열</span>':b.cat==='mech'?'<span class="tag me">기계</span>':b.cat==='power'?'<span class="tag pw">동력</span>':''; const extra=[b.maxTemp?`한계 ${b.maxTemp}°C`:'',b.demand?`${b.demand}kW 소비`:'',b.power?`${b.power}kW 출력`:''].filter(Boolean).join(' · ');
+      return `<div class="card ${hasAll(S.inv,b.cost)?'':'off'}" data-build="${k}"><div class="nm">${i<9?i+1+'. ':''}${b.name} ${tag}</div><div class="ds">${b.desc}${extra?'<br>'+extra:''}</div><div class="cost">${costStr(b.cost)}</div></div>`; }).join('');
+    uiPanel.innerHTML=`<h2>건설 <small>B / Esc 닫기 · 숫자키 1~9 빠른 선택</small></h2><div class="grid">${cards}</div><h3>소지품</h3><div class="chips">${bagStr(S.inv)}</div>`;
+  } else if(S.panel==='machine'&&S.openMachine){
+    const m=S.openMachine, c=m.cfg; let body='';
+    const durBar=`<h3>내구도 ${Math.round(m.dur)}%</h3><div class="meter"><i style="width:${m.dur}%;background:${m.dur>40?'var(--ok)':'var(--bad)'}"></i></div><div style="display:flex;gap:6px;align-items:center"><button data-act="repair" ${hasAll(S.inv,c.repair||{})&&m.dur<100?'':'disabled'}>수리 (${io(c.repair||{})})</button>${m.broken?'<span class="lack">고장 — 수리하면 재가동</span>':''}</div>`;
+    const status=`<div class="status ${m.broken||/부족|없음|가득/.test(m.reason)&&!/^대기/.test(m.reason)?'bad':(m.working?'ok':'')}">${m.reason||'대기'}</div>`;
+    const fuelUI=m.usesFuel?`<h3>연료 ${m.burning?`(${iname(m.burning.item)} 연소 중 ${m.burning.left.toFixed(0)}s)`:'(꺼짐)'}</h3><div class="chips">${bagStr(m.fuel)}</div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${Object.keys(FUELS).filter(k=>cnt(k)>0).map(k=>`<button class="ghost" data-put="${k}" data-slot="fuel">${iname(k)} ×${cnt(k)} 넣기 (최고 ${FUELS[k].heat}°C)</button>`).join('')||'<span style="color:#666;font-size:12px">연료 없음 — 목재·목탄·석탄</span>'}<button class="ghost" data-act="takefuel">연료 꺼내기</button></div>`:'';
+    const tempUI=m.isThermal?`<h3>온도 ${Math.round(m.temp)}°C / 한계 ${c.maxTemp}°C ${m.overheat?'<span class="lack">⚠ 과열 — 빠르게 마모 중</span>':''}</h3><div class="meter"><i style="width:${clamp(m.temp/c.maxTemp*100,0,100)}%;background:${m.overheat?'var(--bad)':'#ff7a1a'}"></i></div>`:'';
+    const powerUI=c.demand?`<p style="font-size:12px;color:#aaa">동력 ${c.demand}kW 필요 · 현재 ${Math.round(m.powerFactor*100)}% · 연결된 동력원: ${S.shafts.filter(s=>s.to===m).map(s=>s.from.name).join(', ')||'없음'}</p>`:'';
+    if(m.isPower) body=`${status}${m.type==='hand_crank'?`<p style="font-size:12px;color:#aaa">기계를 조준하고 좌클릭 유지로 돌립니다. 저장 회전 ${m.spin.toFixed(0)}/25s. 연결된 기계: ${S.shafts.filter(s=>s.from===m).map(s=>s.to.name).join(', ')||'없음'}</p>`:`<p style="font-size:12px;color:#aaa">출력 ${c.power}kW · 부하 ${m.load}kW · 연결: ${S.shafts.filter(s=>s.from===m).map(s=>s.to.name).join(', ')||'없음'}</p>`}${fuelUI}${durBar}`;
+    else if(m.type==='storage') body=`<h3>보관 중 (${total(m.input)}/${m.cap})</h3><div class="chips">${bagStr(m.input)}</div><div style="margin-top:8px"><button data-act="takeout">전부 꺼내기</button></div><h3>넣기</h3><div class="chips">${Object.keys(S.inv).map(k=>`<button class="ghost" data-put="${k}" data-slot="input">${iname(k)} ×${S.inv[k]}</button>`).join('')||'<span style="color:#666;font-size:12px">없음</span>'}</div>`;
+    else if(m.type==='miner') body=`${status}${powerUI}<h3>출력 (${m.node.name})</h3><div class="chips">${bagStr(m.output)}</div><div style="margin-top:8px"><button data-act="takeout">전부 꺼내기</button></div>${durBar}`;
+    else {
+      const sel=c.select?`<h3>레시피</h3><select data-recipe>${Object.entries(c.recipes).map(([k,rr])=>`<option value="${k}" ${m.recipe===k?'selected':''}>${rr.name} — ${io(rr.in)} → ${io(rr.out)} (${rr.time}s)</option>`).join('')}</select>`:`<h3>공정</h3>${Object.values(c.recipes).map(rr=>`<div class="cond">${io(rr.in)} → ${io(rr.out)} ${condStr(rr,c)}</div>`).join('')}`;
+      const putable=Object.keys(S.inv).filter(k=>m.acceptsInto(k)==='input');
+      body=`${status}${sel}${tempUI}${powerUI}${fuelUI}<h3>입력 (${total(m.input)}/${m.cap})</h3><div class="chips">${bagStr(m.input)}</div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${putable.map(k=>`<button data-put="${k}" data-slot="input">${iname(k)} ×${S.inv[k]} 넣기</button>`).join('')||'<span style="color:#666;font-size:12px">넣을 수 있는 재료가 없어요</span>'}<button class="ghost" data-act="takein">입력 꺼내기</button></div><h3>출력</h3><div class="chips">${bagStr(m.output)}</div><div style="margin-top:6px"><button data-act="takeout">전부 꺼내기</button></div>${durBar}`;
+    }
+    uiPanel.innerHTML=`<h2>${m.name} <small>E / Esc 닫기</small></h2>${body}<h3>내 소지품</h3><div class="chips">${bagStr(S.inv)}</div>`;
+  }
+}
+uiPanel.addEventListener('click',e=>{
+  const b=e.target.closest('[data-craft],[data-build],[data-act],[data-put],[data-tab]'); if(!b) return;
+  if(b.dataset.tab){ S.tab=b.dataset.tab; renderPanel(); return; }
+  if(b.dataset.craft){ const r=HAND_RECIPES[b.dataset.craft]; let n=+b.dataset.n||1, made=0; while(n-->0&&hasAll(S.inv,r.in)){ takeAll(S.inv,r.in); addAll(S.inv,r.out); made++; } if(made){ S.invDirty=true; toast(`${r.name} ×${Object.values(r.out)[0]*made}`); } renderPanel(); return; }
+  if(b.dataset.build){ const k=b.dataset.build; closePanel(); selectBuild(k); if(!hasAll(S.inv,MACHINES[k].cost)) toast('자재가 부족하지만 배치 위치는 미리 볼 수 있어요'); return; }
+  const m=S.openMachine; if(!m) return;
+  if(b.dataset.put){ const k=b.dataset.put, slot=b.dataset.slot; const lim=slot==='fuel'?20:m.cap; const n=Math.min(cnt(k),lim-total(m[slot])); if(n>0){ invAdd(k,-n); addAll(m[slot],{[k]:n}); } }
+  else if(b.dataset.act==='takeout'){ const bag=m.type==='storage'?m.input:m.output; let n=0; for(const k in bag){ invAdd(k,bag[k]); n+=bag[k]; } for(const k in bag) delete bag[k]; toast(`${n}개 꺼냄`); }
+  else if(b.dataset.act==='takein'){ for(const k in m.input) invAdd(k,m.input[k]); for(const k in m.input) delete m.input[k]; }
+  else if(b.dataset.act==='takefuel'){ for(const k in m.fuel) invAdd(k,m.fuel[k]); for(const k in m.fuel) delete m.fuel[k]; }
+  else if(b.dataset.act==='repair'){ const c=m.cfg.repair||{}; if(hasAll(S.inv,c)){ takeAll(S.inv,c); S.invDirty=true; m.dur=100; m.broken=false; toast(`${m.name} 수리 완료`); } }
+  renderPanel();
+});
+uiPanel.addEventListener('change',e=>{ if(e.target.dataset.recipe!==undefined&&S.openMachine){ S.openMachine.recipe=e.target.value; S.openMachine.timer=0; renderPanel(); } });
+
+// ============================================================
+// 입력
+// ============================================================
+document.addEventListener('pointerlockchange',()=>{ if(document.pointerLockElement===canvas){ menu.style.display='none'; S.started=true; } else { S.mouseDown=false; for(const k in keys) keys[k]=false; if(!S.panel) showMenu(); } });
+$('#btnStart').onclick=()=>lock();
+$('#btnSave').onclick=()=>{ save(); $('#menuMsg').textContent='저장했습니다.'; };
+$('#btnReset').onclick=()=>{ if(confirm('진행 상황을 모두 지우고 새로 시작할까요?')){ localStorage.removeItem(SAVE_KEY); location.reload(); } };
+canvas.addEventListener('mousedown',e=>{ if(!controls.isLocked){ if(menu.style.display!=='none'&&ui.style.display==='none') lock(); return; } if(e.button===0){ if(S.build) tryPlace(); else S.mouseDown=true; } else if(e.button===2&&S.build) cancelBuild(); });
+addEventListener('mouseup',e=>{ if(e.button===0) S.mouseDown=false; });
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('keydown',e=>{
+  if(e.code==='Tab') e.preventDefault();
+  if(S.panel){ if(e.code==='Escape'||e.code==='Tab'||e.code==='KeyB'||e.code==='KeyE'){ e.preventDefault(); closePanel(); } return; }
+  if(!controls.isLocked) return; keys[e.code]=true;
+  switch(e.code){
+    case 'Tab': openPanel('craft'); break; case 'KeyB': openPanel('build'); break;
+    case 'KeyE': if(look?.machine&&look.dist<6) openPanel('machine',look.machine); break;
+    case 'KeyX': if(look?.machine&&look.dist<7) removeMachine(look.machine); else if(look?.link&&look.dist<7){ removeLink(look.link); toast('철거 — 목재 환불'); } break;
+    case 'KeyR': S.ghostRot+=Math.PI/2; break; case 'KeyQ': cancelBuild(); break;
+    default: if(/^Digit[1-9]$/.test(e.code)){ const k=BUILD_ORDER[+e.code[5]-1]; if(k) selectBuild(k); }
+  }
+});
+addEventListener('keyup',e=>{ keys[e.code]=false; });
+
+// ============================================================
+// 저장 / 불러오기
+// ============================================================
+const SAVE_KEY='forgeworld-p0';
+function save(){
+  const idx=m=>S.machines.indexOf(m);
+  const data={inv:S.inv,hp:S.hp,day:S.day,time:S.time,obj:S.obj,pos:[P.pos.x,P.pos.y,P.pos.z],removed:[...S.removed],
+    machines:S.machines.map(m=>({type:m.type,pos:[m.pos.x,m.pos.y,m.pos.z],rot:m.rot,node:m.node?m.node.id:null,input:m.input,output:m.type==='storage'?undefined:m.output,fuel:m.fuel,burning:m.burning,temp:m.temp,dur:m.dur,broken:m.broken,spin:m.spin,recipe:m.recipe})),
+    conveyors:S.conveyors.map(c=>({from:idx(c.from),to:idx(c.to),items:c.items})), shafts:S.shafts.map(s=>({from:idx(s.from),to:idx(s.to)}))};
+  try{ localStorage.setItem(SAVE_KEY,JSON.stringify(data)); }catch(e){}
+}
+function load(){
+  let d; try{ d=JSON.parse(localStorage.getItem(SAVE_KEY)); }catch(e){} if(!d) return false;
+  Object.assign(S,{inv:d.inv||{},hp:d.hp??100,day:d.day||1,time:d.time??0.3,obj:d.obj||0}); S.invDirty=true; if(d.pos) P.pos.set(...d.pos);
+  for(const id of d.removed||[]){ const r=resources[id]; if(r){ r.alive=false; scene.remove(r.mesh); S.removed.add(id); } }
+  for(const m of d.machines||[]){ if(!MACHINES[m.type]) continue; const node=m.node!=null?resources[m.node]:null; const mm=new Machine(m.type,new THREE.Vector3(...m.pos),m.rot,node); Object.assign(mm.input,m.input||{}); if(m.output) Object.assign(mm.output,m.output); Object.assign(mm.fuel,m.fuel||{}); mm.burning=m.burning||null; mm.temp=m.temp??20; mm.dur=m.dur??100; mm.broken=!!m.broken; mm.spin=m.spin||0; if(m.recipe&&mm.cfg.recipes?.[m.recipe]) mm.recipe=m.recipe; S.machines.push(mm); }
+  for(const c of d.conveyors||[]){ const f=S.machines[c.from], t=S.machines[c.to]; if(f&&t) S.conveyors.push(new Conveyor(f,t,c.items||[])); }
+  for(const s of d.shafts||[]){ const f=S.machines[s.from], t=S.machines[s.to]; if(f&&t) S.shafts.push(new Shaft(f,t)); }
+  return true;
+}
+if(load()) $('#menuMsg').textContent='저장된 게임을 불러왔습니다.';
+setInterval(()=>{ if(S.started) save(); },30000); addEventListener('beforeunload',()=>{ if(S.started) save(); });
+
+// ============================================================
+// 낮/밤 · HUD · 루프
+// ============================================================
+const DAY_LEN=360, skyDay=new THREE.Color(0x87ceeb), skyNight=new THREE.Color(0x0b1026), skyDusk=new THREE.Color(0xf0905a), _sky=new THREE.Color();
+function updateDay(dt){
+  S.time+=dt/DAY_LEN; if(S.time>=1){ S.time-=1; S.day++; toast(`Day ${S.day}`); }
+  const ang=(S.time-0.25)*Math.PI*2, el=Math.sin(ang);
+  sun.position.set(P.pos.x+Math.cos(ang)*120,Math.max(el,-0.1)*140+5,P.pos.z+50); sun.target.position.copy(P.pos);
+  const light=THREE.MathUtils.smoothstep(el,-0.12,0.22), dusk=1-Math.min(1,Math.abs(el)/0.25);
+  sun.intensity=2.2*light; hemi.intensity=0.12+0.65*light;
+  _sky.copy(skyNight).lerp(skyDay,light).lerp(skyDusk,dusk*0.55*Math.max(light,0.3)); scene.background.copy(_sky); scene.fog.color.copy(_sky); water.material.opacity=0.6+0.2*light;
+}
+let hudT=0;
+function updateHUD(dt){
+  $('#hp i').style.width=S.hp+'%'; $('#heat i').style.width=S.heat+'%'; $('#stamina i').style.width=S.stamina+'%';
+  hudT+=dt; if(hudT<0.12) return; hudT=0;
+  if(S.invDirty){ S.invDirty=false; $('#inv').innerHTML=bagStr(S.inv); if(S.panel) renderPanel(); }
+  else if(S.panel==='machine'&&document.activeElement?.tagName!=='SELECT') renderPanel();
+  const p=promptText(); const pe=$('#prompt'); pe.style.display=p?'block':'none'; pe.innerHTML=p;
+  const hh=Math.floor(S.time*24), mm=Math.floor((S.time*24-hh)*60); $('#clock').textContent=`Day ${S.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  if(S.obj<OBJECTIVES.length&&OBJECTIVES[S.obj].c()){ S.obj++; toast(S.obj<OBJECTIVES.length?`목표 ${S.obj} 완료!`:'🎉 철강 체인 완주 + 무인 라인!'); }
+  $('#objective').innerHTML=S.obj<OBJECTIVES.length?`<b>목표 ${S.obj+1}/${OBJECTIVES.length}</b><br>${OBJECTIVES[S.obj].t}`:`<b>모든 목표 달성 🎉</b><br>이제 공장을 키우거나, 과열로 뭘 망가뜨려 보세요.`;
+}
+const clock=new THREE.Clock();
+function simStep(dt){ updatePower(); for(const m of S.machines) m.update(dt); for(const c of S.conveyors) c.update(dt); for(const s of S.shafts) s.update(dt); }
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),0.05); const running=S.started&&controls.isLocked;
+  if(running){ S.playTime+=dt; updatePlayer(dt); updateLook(); updateMining(dt); updateGhost(); updateDay(dt); }
+  simStep(running?dt:0); updateHUD(dt); renderer.render(scene,camera);
+}
+window.__dbg={S,P,camera,resources,Machine,Conveyor,Shaft,invAdd,selectBuild,tryPlace,placementCheck,removeMachine,THREE,getHeight,lookRef:()=>look,simStep,MACHINES,FUELS,HAND_RECIPES,OBJECTIVES,save,load};
+updateDay(0); loop();
+</script>
+</body>
+</html>

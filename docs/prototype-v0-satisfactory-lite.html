@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FICSIT Lite — 생존 제작 데모</title>
+<style>
+  :root { --accent:#f58b1f; --bg:rgba(12,14,18,.82); --line:rgba(255,255,255,.12); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#000; font-family:-apple-system,"Pretendard","Apple SD Gothic Neo","Noto Sans KR",sans-serif; color:#eee; user-select:none; }
+  canvas#c { display:block; width:100%; height:100%; }
+  #hud { position:fixed; inset:0; pointer-events:none; }
+  #hud > * { position:absolute; }
+  #crosshair { left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; }
+  #crosshair:before,#crosshair:after { content:""; position:absolute; background:#fff; opacity:.85; }
+  #crosshair:before { left:6px; top:0; width:2px; height:14px; }
+  #crosshair:after { top:6px; left:0; width:14px; height:2px; }
+  #stats { left:16px; top:16px; width:220px; display:flex; flex-direction:column; gap:6px; }
+  .bar { height:14px; background:rgba(0,0,0,.5); border:1px solid var(--line); border-radius:4px; overflow:hidden; position:relative; }
+  .bar i { display:block; height:100%; width:100%; transition:width .15s; }
+  .bar span { position:absolute; left:6px; top:-1px; font-size:11px; font-weight:600; text-shadow:0 1px 2px #000; }
+  #hp i { background:#e0433a; } #hunger i { background:#e6a23c; } #stamina i { background:#4bb3fd; }
+  #clock { right:16px; top:16px; background:var(--bg); padding:6px 10px; border-radius:6px; font-size:13px; border:1px solid var(--line); }
+  #objective { right:16px; top:56px; max-width:300px; background:var(--bg); padding:8px 12px; border-radius:6px; font-size:13px; border-left:3px solid var(--accent); line-height:1.4; }
+  #objective b { color:var(--accent); }
+  #prompt { left:50%; top:56%; transform:translateX(-50%); font-size:15px; background:var(--bg); padding:6px 12px; border-radius:6px; white-space:nowrap; display:none; }
+  #prog { left:50%; top:62%; width:200px; margin-left:-100px; height:8px; background:rgba(0,0,0,.5); border:1px solid var(--line); border-radius:4px; display:none; }
+  #prog i { display:block; height:100%; background:var(--accent); width:0; }
+  #inv { left:50%; bottom:16px; transform:translateX(-50%); display:flex; gap:6px; flex-wrap:wrap; justify-content:center; max-width:90vw; }
+  .chip { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-size:12px; display:flex; align-items:center; gap:6px; }
+  .chip i { width:10px; height:10px; border-radius:2px; display:inline-block; }
+  #keys { left:16px; bottom:16px; font-size:11px; opacity:.7; line-height:1.6; }
+  #toast { left:50%; top:20%; transform:translateX(-50%); font-size:15px; background:rgba(245,139,31,.9); color:#111; padding:8px 16px; border-radius:6px; opacity:0; transition:opacity .3s; font-weight:600; }
+  #buildmode { left:50%; top:16px; transform:translateX(-50%); background:rgba(245,139,31,.9); color:#111; padding:6px 14px; border-radius:6px; font-weight:700; display:none; }
+
+  .overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); }
+  .panel { background:#15181e; border:1px solid var(--line); border-radius:10px; width:min(860px,92vw); max-height:86vh; overflow:auto; padding:20px 24px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .panel h2 { margin:0 0 12px; font-size:20px; color:var(--accent); display:flex; justify-content:space-between; align-items:center; }
+  .panel h2 small { font-size:12px; color:#999; font-weight:400; }
+  .panel h3 { margin:14px 0 8px; font-size:14px; color:#bbb; text-transform:uppercase; letter-spacing:.06em; }
+  .cols { display:grid; grid-template-columns:1fr 1.4fr; gap:20px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; background:rgba(255,255,255,.03); }
+  .row.off { opacity:.45; }
+  .row .nm { font-weight:600; }
+  .row .cost { font-size:12px; color:#aaa; }
+  .row .cost .lack { color:#e0433a; }
+  button { background:var(--accent); color:#111; border:0; border-radius:5px; padding:6px 12px; font-weight:700; cursor:pointer; font-size:13px; }
+  button:disabled { background:#444; color:#888; cursor:default; }
+  button.ghost { background:transparent; color:#ddd; border:1px solid var(--line); }
+  select { background:#222; color:#eee; border:1px solid var(--line); border-radius:5px; padding:6px; font-size:13px; }
+  .card { border:1px solid var(--line); border-radius:8px; padding:12px; cursor:pointer; background:rgba(255,255,255,.03); }
+  .card:hover { border-color:var(--accent); }
+  .card.off { opacity:.5; }
+  .card .nm { font-weight:700; font-size:15px; margin-bottom:4px; }
+  .card .ds { font-size:12px; color:#aaa; margin-bottom:6px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; min-height:28px; }
+  #menu .panel { text-align:center; width:min(620px,92vw); }
+  #menu h1 { margin:0 0 6px; color:var(--accent); font-size:30px; letter-spacing:.04em; }
+  #menu p { color:#aaa; margin:0 0 16px; }
+  #menu .help { text-align:left; font-size:13px; line-height:1.7; background:rgba(255,255,255,.04); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
+  #menu .help kbd { background:#2a2e36; padding:1px 6px; border-radius:4px; font-family:ui-monospace,monospace; font-size:12px; border:1px solid #444; }
+  #menu .btns { display:flex; gap:10px; justify-content:center; }
+  #menu .btns button { font-size:15px; padding:10px 20px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="stats">
+    <div class="bar" id="hp"><i></i><span>체력</span></div>
+    <div class="bar" id="hunger"><i></i><span>허기</span></div>
+    <div class="bar" id="stamina"><i></i><span>스태미나</span></div>
+  </div>
+  <div id="clock">Day 1 · 07:00</div>
+  <div id="objective"></div>
+  <div id="buildmode"></div>
+  <div id="prompt"></div>
+  <div id="prog"><i></i></div>
+  <div id="inv"></div>
+  <div id="keys">WASD 이동 · Shift 달리기 · Space 점프 · 좌클릭 채굴<br>Tab 인벤토리/제작 · B 건설 · E 상호작용 · F 베리 먹기 · X 철거 · R 회전 · Q 건설 취소</div>
+  <div id="toast"></div>
+</div>
+
+<div id="menu" class="overlay" style="display:flex">
+  <div class="panel">
+    <h1>FICSIT Lite</h1>
+    <p>오픈월드 생존 · 제작 · 자동화 데모 (Three.js)</p>
+    <div class="help">
+      <b>목표:</b> 철 광석을 캐서 부품을 만들고, 채굴기 → 컨베이어 → 제련기 → 보관함 자동화 라인을 완성하세요.<br>
+      <kbd>WASD</kbd> 이동 · <kbd>Shift</kbd> 달리기 · <kbd>Space</kbd> 점프 · <kbd>좌클릭 유지</kbd> 채굴<br>
+      <kbd>Tab</kbd> 인벤토리/수동 제작 · <kbd>B</kbd> 건설 메뉴 · <kbd>E</kbd> 기계 열기 · <kbd>F</kbd> 베리 먹기<br>
+      <kbd>X</kbd> 철거(환불) · <kbd>R</kbd> 설치물 회전 · <kbd>Q</kbd>/<kbd>우클릭</kbd> 건설 취소 · <kbd>Esc</kbd> 메뉴<br>
+      허기가 0이 되면 체력이 닳아요. 덤불에서 베리를 모아두세요. 30초마다 자동 저장됩니다.
+    </div>
+    <div class="btns">
+      <button id="btnStart">게임 시작</button>
+      <button id="btnSave" class="ghost">저장</button>
+      <button id="btnReset" class="ghost">새 게임 (초기화)</button>
+    </div>
+    <p id="menuMsg" style="margin-top:12px;font-size:12px"></p>
+  </div>
+</div>
+
+<div id="ui" class="overlay"><div class="panel" id="uiPanel"></div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+// ============================================================
+// 유틸
+// ============================================================
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+const $ = s=>document.querySelector(s);
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function makeNoise(seed){
+  const F2=0.5*(Math.sqrt(3)-1), G2=(3-Math.sqrt(3))/6;
+  const grad=[[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+  const r=mulberry32(seed); const perm=[...Array(256).keys()];
+  for(let i=255;i>0;i--){ const j=Math.floor(r()*(i+1)); [perm[i],perm[j]]=[perm[j],perm[i]]; }
+  const p=new Uint8Array(512); for(let i=0;i<512;i++) p[i]=perm[i&255];
+  return (xin,yin)=>{
+    let n0=0,n1=0,n2=0;
+    const s=(xin+yin)*F2, i=Math.floor(xin+s), j=Math.floor(yin+s), t=(i+j)*G2;
+    const x0=xin-(i-t), y0=yin-(j-t);
+    const i1=x0>y0?1:0, j1=x0>y0?0:1;
+    const x1=x0-i1+G2, y1=y0-j1+G2, x2=x0-1+2*G2, y2=y0-1+2*G2;
+    const ii=i&255, jj=j&255;
+    const g0=grad[p[ii+p[jj]]&7], g1=grad[p[ii+i1+p[jj+j1]]&7], g2=grad[p[ii+1+p[jj+1]]&7];
+    let t0=0.5-x0*x0-y0*y0; if(t0>0){ t0*=t0; n0=t0*t0*(g0[0]*x0+g0[1]*y0); }
+    let t1=0.5-x1*x1-y1*y1; if(t1>0){ t1*=t1; n1=t1*t1*(g1[0]*x1+g1[1]*y1); }
+    let t2=0.5-x2*x2-y2*y2; if(t2>0){ t2*=t2; n2=t2*t2*(g2[0]*x2+g2[1]*y2); }
+    return 70*(n0+n1+n2);
+  };
+}
+
+// ============================================================
+// 데이터 정의
+// ============================================================
+const ITEMS = {
+  wood:{name:'목재',color:'#8b5a2b'}, stone:{name:'돌',color:'#8a8a8a'}, berries:{name:'베리',color:'#7a2cff'},
+  iron_ore:{name:'철 광석',color:'#9a5a3c'}, copper_ore:{name:'구리 광석',color:'#c8762a'}, limestone:{name:'석회석',color:'#d8d2c0'}, coal:{name:'석탄',color:'#2b2b2b'},
+  iron_ingot:{name:'철 주괴',color:'#b0b0b0'}, copper_ingot:{name:'구리 주괴',color:'#d98b4a'},
+  iron_plate:{name:'철판',color:'#c9c9c9'}, iron_rod:{name:'철봉',color:'#9e9e9e'}, wire:{name:'전선',color:'#e39a4a'},
+  screw:{name:'나사',color:'#b8b8b8'}, concrete:{name:'콘크리트',color:'#a8a8a0'}, reinforced_plate:{name:'강화 철판',color:'#6d7f8f'},
+};
+const SMELT = { iron_ore:{in:{iron_ore:1},out:{iron_ingot:1},time:2}, copper_ore:{in:{copper_ore:1},out:{copper_ingot:1},time:2} };
+const CON_RECIPES = {
+  iron_plate:{name:'철판',in:{iron_ingot:3},out:{iron_plate:2},time:4},
+  iron_rod:{name:'철봉',in:{iron_ingot:1},out:{iron_rod:1},time:2},
+  wire:{name:'전선',in:{copper_ingot:1},out:{wire:2},time:2},
+  screw:{name:'나사',in:{iron_rod:1},out:{screw:4},time:2},
+  concrete:{name:'콘크리트',in:{limestone:3},out:{concrete:1},time:3},
+};
+const HAND_RECIPES = {
+  iron_ingot:{name:'철 주괴',in:{iron_ore:1},out:{iron_ingot:1}},
+  copper_ingot:{name:'구리 주괴',in:{copper_ore:1},out:{copper_ingot:1}},
+  ...CON_RECIPES,
+  reinforced_plate:{name:'강화 철판',in:{iron_plate:6,screw:12},out:{reinforced_plate:1}},
+};
+const BUILDINGS = {
+  miner:{name:'채굴기',cost:{iron_plate:5,concrete:3},desc:'광석 노드 위에 설치하면 자동으로 광석을 캡니다 (2초/개)'},
+  smelter:{name:'제련기',cost:{iron_rod:5,wire:8},desc:'광석 → 주괴. 컨베이어로 입력/출력 연결 가능'},
+  constructor:{name:'제작기',cost:{iron_plate:8,wire:8},desc:'주괴 → 철판/철봉/전선/나사/콘크리트. 레시피 선택'},
+  storage:{name:'보관함',cost:{iron_plate:10},desc:'아이템 500개 보관. 컨베이어 종점으로 사용'},
+  conveyor:{name:'컨베이어',cost:{iron_plate:1},desc:'기계 → 기계 연결. 길이 2m당 철판 1개'},
+};
+const OBJECTIVES = [
+  {t:'철 광석 노드(붉은 바위)를 찾아 <b>철 광석 10개</b> 채굴 — 좌클릭 유지', c:()=>cnt('iron_ore')>=10 || cnt('iron_ingot')>=5},
+  {t:'<b>Tab</b>으로 제작 창을 열어 <b>철 주괴 5개</b> 수동 제작', c:()=>cnt('iron_ingot')>=5 || cnt('iron_rod')>=5},
+  {t:'<b>철봉 5개</b>와 <b>구리 광석 → 전선 8개</b> 제작 (구리 노드는 주황색)', c:()=>cnt('iron_rod')>=5 && cnt('wire')>=8},
+  {t:'<b>B</b> 건설 메뉴에서 <b>제련기</b>를 땅에 설치', c:()=>S.machines.some(m=>m.type==='smelter')},
+  {t:'<b>철판 5개 + 콘크리트 3개</b>(석회석은 흰 바위)로 <b>채굴기</b>를 철 노드 위에 설치', c:()=>S.machines.some(m=>m.type==='miner')},
+  {t:'<b>컨베이어</b>로 채굴기 → 제련기 연결 (채굴기 클릭 후 제련기 클릭)', c:()=>S.conveyors.some(c=>c.from.type==='miner'&&c.to.type==='smelter')},
+  {t:'<b>보관함</b>을 짓고 제련기 → 보관함 컨베이어 연결', c:()=>S.conveyors.some(c=>c.from.type==='smelter'&&c.to.type==='storage')},
+];
+
+// ============================================================
+// 상태
+// ============================================================
+const S = {
+  inv:{}, hp:100, hunger:100, stamina:100, day:1, time:0.3, obj:0,
+  machines:[], conveyors:[], removed:new Set(),
+  build:null, ghost:null, ghostMats:[], ghostRot:0, convFrom:null,
+  panel:null, openMachine:null, mining:{target:null,progress:0},
+  mouseDown:false, started:false, invDirty:true, playTime:0,
+};
+const keys = {};
+const cnt = it=>S.inv[it]||0;
+function invAdd(it,n=1){ S.inv[it]=(S.inv[it]||0)+n; if(S.inv[it]<=0) delete S.inv[it]; S.invDirty=true; }
+function hasAll(bag,cost){ return Object.entries(cost).every(([k,v])=>(bag[k]||0)>=v); }
+function takeAll(bag,cost){ for(const [k,v] of Object.entries(cost)){ bag[k]-=v; if(bag[k]<=0) delete bag[k]; } }
+function addAll(bag,items,mult=1){ for(const [k,v] of Object.entries(items)) bag[k]=(bag[k]||0)+v*mult; }
+const total = bag=>Object.values(bag).reduce((a,b)=>a+b,0);
+function costStr(cost,bag=S.inv){ return Object.entries(cost).map(([k,v])=>`<span class="${(bag[k]||0)>=v?'':'lack'}">${ITEMS[k].name} ${v}</span>`).join(' · '); }
+function bagStr(bag){ const e=Object.entries(bag); return e.length? e.map(([k,v])=>`<span class="chip"><i style="background:${ITEMS[k].color}"></i>${ITEMS[k].name} ×${v}</span>`).join('') : '<span style="color:#666;font-size:12px">비어 있음</span>'; }
+let toastT=null;
+function toast(msg){ const el=$('#toast'); el.textContent=msg; el.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(()=>el.style.opacity=0,2200); }
+
+// ============================================================
+// 렌더러 / 씬
+// ============================================================
+const canvas=$('#c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb); scene.fog=new THREE.Fog(0x87ceeb,90,340);
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.1,700);
+const hemi=new THREE.HemisphereLight(0xbfd9ff,0x5a4a2a,0.7); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff2d8,2); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048); const sc=sun.shadow.camera; sc.left=sc.bottom=-70; sc.right=sc.top=70; sc.near=1; sc.far=400; sun.shadow.bias=-0.0008;
+scene.add(sun); scene.add(sun.target);
+const controls=new PointerLockControls(camera,canvas);
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+// ============================================================
+// 지형
+// ============================================================
+const noise=makeNoise(1337);
+function fbm(x,y){ let v=0,a=1,f=1,s=0; for(let o=0;o<4;o++){ v+=a*noise(x*f,y*f); s+=a; a*=0.5; f*=2.1; } return v/s; }
+function getHeight(x,z){
+  const d=Math.hypot(x,z);
+  let h=fbm(x*0.006,z*0.006)*24 + fbm(x*0.03+100,z*0.03-50)*2.2 + 3;
+  const flat=THREE.MathUtils.smoothstep(d,10,45); h=h*flat+4*(1-flat);
+  h-=THREE.MathUtils.smoothstep(d,250,310)*35;
+  return h;
+}
+const WORLD=640, SEG=160;
+const tgeo=new THREE.PlaneGeometry(WORLD,WORLD,SEG,SEG); tgeo.rotateX(-Math.PI/2);
+{
+  const pos=tgeo.attributes.position, col=new Float32Array(pos.count*3);
+  const c=new THREE.Color(), g1=new THREE.Color(0x3f8a3a), g2=new THREE.Color(0x7fb04f), sand=new THREE.Color(0xd9c48a), rock=new THREE.Color(0x6e6a66), snow=new THREE.Color(0xdde3ea);
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), z=pos.getZ(i), h=getHeight(x,z); pos.setY(i,h);
+    const slope=Math.abs(getHeight(x+1.5,z)-h)+Math.abs(getHeight(x,z+1.5)-h);
+    if(h<0.7) c.copy(sand); else if(h>21) c.copy(snow); else if(slope>2.2) c.copy(rock);
+    else { c.copy(g1).lerp(g2,(noise(x*0.05,z*0.05)+1)/2); if(slope>1.4) c.lerp(rock,(slope-1.4)/0.8); }
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+  }
+  tgeo.setAttribute('color',new THREE.BufferAttribute(col,3)); tgeo.computeVertexNormals();
+}
+const terrain=new THREE.Mesh(tgeo,new THREE.MeshLambertMaterial({vertexColors:true})); terrain.receiveShadow=true; scene.add(terrain);
+const water=new THREE.Mesh(new THREE.PlaneGeometry(WORLD+200,WORLD+200),new THREE.MeshPhongMaterial({color:0x2a6fb0,transparent:true,opacity:0.78,shininess:90}));
+water.rotation.x=-Math.PI/2; water.position.y=0; scene.add(water);
+
+// ============================================================
+// 자원 (나무 / 바위 / 광석 노드 / 덤불)
+// ============================================================
+const resources=[];
+const MAT = c=>new THREE.MeshStandardMaterial({color:c,roughness:0.85});
+const G = { trunk:new THREE.CylinderGeometry(0.22,0.4,3.2,7), leaf:new THREE.DodecahedronGeometry(1.5,0), rock:new THREE.DodecahedronGeometry(1.1,0), ore:new THREE.DodecahedronGeometry(0.8,0), bush:new THREE.SphereGeometry(0.75,8,6), berry:new THREE.SphereGeometry(0.12,6,5) };
+const M = { trunk:MAT(0x6b4423), leaf1:MAT(0x2f7a2f), leaf2:MAT(0x3f9a3a), leaf3:MAT(0x5aa03c), rock:MAT(0x7d7a77), bush:MAT(0x2e6b2a), berry:MAT(0x8a2be2),
+  iron:MAT(0x9a5a3c), copper:MAT(0xc8762a), limestone:MAT(0xd8d2c0), coal:MAT(0x2b2b2b) };
+const ORE_INFO = { iron:{item:'iron_ore',name:'철 광석 노드'}, copper:{item:'copper_ore',name:'구리 광석 노드'}, limestone:{item:'limestone',name:'석회석 노드'}, coal:{item:'coal',name:'석탄 노드'} };
+const RES_INFO = { tree:{name:'나무',item:'wood',per:3,hits:4,time:1.1}, rock:{name:'바위',item:'stone',per:2,hits:4,time:1.0}, ore:{per:1,hits:Infinity,time:0.8}, bush:{name:'베리 덤불',item:'berries',per:2,hits:3,time:0.6} };
+function shadow(m){ m.castShadow=true; m.receiveShadow=true; return m; }
+function addRes(kind,x,z,rng,ore){
+  const y=getHeight(x,z); const g=new THREE.Group(); g.position.set(x,y,z);
+  if(kind==='tree'){
+    const s=0.8+rng()*0.7; const t=shadow(new THREE.Mesh(G.trunk,M.trunk)); t.position.y=1.6*s; t.scale.setScalar(s); g.add(t);
+    const lm=[M.leaf1,M.leaf2,M.leaf3][Math.floor(rng()*3)];
+    for(let i=0;i<2;i++){ const l=shadow(new THREE.Mesh(G.leaf,lm)); l.position.set((rng()-.5)*.6,(3.2+i*1.3)*s,(rng()-.5)*.6); l.scale.setScalar(s*(1.1-i*0.3)); l.rotation.set(rng()*3,rng()*3,0); g.add(l); }
+  } else if(kind==='rock'){
+    const r=shadow(new THREE.Mesh(G.rock,M.rock)); const s=0.8+rng()*0.9; r.scale.set(s*1.3,s*0.8,s); r.rotation.set(rng()*3,rng()*3,rng()*3); r.position.y=0.4*s; g.add(r);
+  } else if(kind==='ore'){
+    const m=M[ore]; const n=4+Math.floor(rng()*3);
+    for(let i=0;i<n;i++){ const o=shadow(new THREE.Mesh(G.ore,m)); const a=rng()*Math.PI*2, d=rng()*1.4; o.position.set(Math.cos(a)*d,0.3+rng()*0.4,Math.sin(a)*d); o.rotation.set(rng()*3,rng()*3,rng()*3); o.scale.setScalar(0.7+rng()*0.7); g.add(o); }
+    const base=shadow(new THREE.Mesh(G.rock,M.rock)); base.scale.set(2.2,0.5,2.2); base.position.y=0.05; g.add(base);
+  } else if(kind==='bush'){
+    const b=shadow(new THREE.Mesh(G.bush,M.bush)); b.position.y=0.55; b.scale.set(1.2,0.9,1.2); g.add(b);
+    for(let i=0;i<6;i++){ const be=new THREE.Mesh(G.berry,M.berry); const a=rng()*6.28; be.position.set(Math.cos(a)*0.75,0.55+(rng()-.3)*0.6,Math.sin(a)*0.75); g.add(be); }
+  }
+  const info=kind==='ore'?{...RES_INFO.ore,...ORE_INFO[ore]}:RES_INFO[kind];
+  const res={id:resources.length,kind,ore,item:info.item,name:info.name,per:info.per,hits:info.hits,time:info.time,mesh:g,pos:g.position.clone(),alive:true,miner:null};
+  g.userData.res=res; resources.push(res); scene.add(g); return res;
+}
+{
+  const rng=mulberry32(4242);
+  const ok=(x,z,minH=1.2,minD=6)=>{ const h=getHeight(x,z); return h>minH && Math.hypot(x,z)>minD && Math.abs(getHeight(x+2,z)-h)<2.4 && Math.abs(getHeight(x,z+2)-h)<2.4; };
+  // 시작점 근처 고정 노드 (물속이면 근처 육지로 이동)
+  const landNear=(x,z)=>{ for(let r=0;r<40;r+=2) for(let a=0;a<Math.PI*2;a+=Math.PI/6){ const nx=x+Math.cos(a)*r, nz=z+Math.sin(a)*r; if(ok(nx,nz,1.5,12)) return [nx,nz]; } return [x,z]; };
+  for(const [x,z,ore] of [[22,10,'iron'],[-24,14,'copper'],[8,-26,'limestone'],[-30,-20,'iron'],[30,-30,'copper']]){ const [nx,nz]=landNear(x,z); addRes('ore',nx,nz,rng,ore); }
+  const kinds=[['iron',12],['copper',9],['limestone',8],['coal',6]];
+  for(const [ore,n] of kinds){ let placed=0,tries=0; while(placed<n&&tries++<400){ const x=(rng()-.5)*460, z=(rng()-.5)*460; if(ok(x,z,1.2,35)){ addRes('ore',x,z,rng,ore); placed++; } } }
+  for(let i=0;i<170;i++){ const x=(rng()-.5)*480, z=(rng()-.5)*480; if(ok(x,z,1.5,14)) addRes('tree',x,z,rng); }
+  for(let i=0;i<70;i++){ const x=(rng()-.5)*480, z=(rng()-.5)*480; if(ok(x,z,0.9,10)) addRes('rock',x,z,rng); }
+  for(let i=0;i<50;i++){ const x=(rng()-.5)*300, z=(rng()-.5)*300; if(ok(x,z,1.2,8)) addRes('bush',x,z,rng); }
+  addRes('bush',6,8,rng); addRes('bush',-7,-5,rng);
+}
+
+// ============================================================
+// 기계 / 컨베이어
+// ============================================================
+function box(w,h,d,color,y=0,x=0,z=0,emissive){ const m=shadow(new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color,roughness:0.6,metalness:0.3,emissive:emissive||0x000000}))); m.position.set(x,y,z); return m; }
+function buildMesh(type){
+  const g=new THREE.Group(); const a={};
+  if(type==='miner'){
+    g.add(box(2.6,1.0,2.6,0xd9822b,0.5)); g.add(box(0.9,3.2,0.9,0x4f5560,2.6,-0.6,-0.6));
+    a.gear=shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.7,0.3,12),new THREE.MeshStandardMaterial({color:0x9aa3ad,metalness:0.7,roughness:0.3}))); a.gear.position.set(-0.6,4.3,-0.6); g.add(a.gear);
+    const drill=shadow(new THREE.Mesh(new THREE.ConeGeometry(0.45,1.4,8),new THREE.MeshStandardMaterial({color:0x8a8f99,metalness:0.6}))); drill.rotation.x=Math.PI; drill.position.set(0.5,1.5,0.5); g.add(drill); a.drill=drill;
+  } else if(type==='smelter'){
+    g.add(box(2.2,1.8,2.8,0x8a4b2f,0.9)); const ch=shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.4,2.2,8),new THREE.MeshStandardMaterial({color:0x444a52}))); ch.position.set(-0.6,2.8,-0.8); g.add(ch);
+    a.light=box(1.2,0.7,0.1,0xff6a00,0.9,0,1.42,0xff5500); g.add(a.light);
+  } else if(type==='constructor'){
+    g.add(box(2.8,1.8,2.6,0x3b6ea5,0.9)); g.add(box(2.4,0.3,2.2,0x263d5a,1.95)); a.light=box(0.4,0.4,0.1,0x33ff66,1.3,1.0,1.32,0x22ff55); g.add(a.light);
+    a.arm=box(0.25,1.2,0.25,0xcfd4da,2.6,-0.5,0); g.add(a.arm);
+  } else if(type==='storage'){
+    g.add(box(2.2,1.5,2.2,0x6f7a8a,0.75)); g.add(box(2.3,0.2,2.3,0x3c434d,1.6)); g.add(box(0.1,0.9,1.2,0xf58b1f,0.75,1.12,0));
+  }
+  g.userData.anim=a; return g;
+}
+class Machine {
+  constructor(type,pos,rot=0,node=null){
+    this.type=type; this.pos=pos.clone(); this.rot=rot; this.node=node; this.input={}; this.output={}; this.timer=0; this.recipe=type==='constructor'?'iron_plate':null; this.working=false;
+    this.cap=type==='storage'?500:100; if(type==='storage') this.output=this.input;
+    this.mesh=buildMesh(type); this.mesh.position.copy(pos); this.mesh.rotation.y=rot; this.mesh.userData.machine=this; scene.add(this.mesh);
+    if(node) node.miner=this;
+  }
+  get name(){ return BUILDINGS[this.type].name; }
+  currentRecipe(){
+    if(this.type==='smelter'){ for(const k in this.input) if(SMELT[k]&&this.input[k]>0) return SMELT[k]; return null; }
+    if(this.type==='constructor') return CON_RECIPES[this.recipe]||null;
+    return null;
+  }
+  accepts(item){
+    if(this.type==='storage') return true; if(this.type==='smelter') return !!SMELT[item];
+    if(this.type==='constructor'){ const r=CON_RECIPES[this.recipe]; return !!(r&&r.in[item]); } return false;
+  }
+  inputRoom(){ return total(this.input)<this.cap; }
+  update(dt){
+    this.working=false;
+    if(this.type==='miner'){ if(total(this.output)<this.cap){ this.working=true; this.timer+=dt; if(this.timer>=2){ this.timer-=2; addAll(this.output,{[this.node.item]:1}); } } }
+    else if(this.type==='smelter'||this.type==='constructor'){
+      const r=this.currentRecipe();
+      if(r&&hasAll(this.input,r.in)&&total(this.output)+total(r.out)<=this.cap){ this.working=true; this.timer+=dt; if(this.timer>=r.time){ this.timer=0; takeAll(this.input,r.in); addAll(this.output,r.out); } }
+      else this.timer=0;
+    }
+    const a=this.mesh.userData.anim;
+    if(a.gear) a.gear.rotation.y+=this.working?dt*4:0;
+    if(a.drill) a.drill.position.y=this.working?1.5+Math.sin(S.playTime*8)*0.2:1.5;
+    if(a.arm) a.arm.position.y=this.working?2.6+Math.sin(S.playTime*6)*0.3:2.6;
+    if(a.light) a.light.material.emissiveIntensity=this.working?0.8+Math.sin(S.playTime*5)*0.4:0.05;
+  }
+  dispose(){ scene.remove(this.mesh); if(this.node) this.node.miner=null; }
+}
+const beltMat=new THREE.MeshStandardMaterial({color:0x3a3f47,roughness:0.8}), stripeMat=new THREE.MeshStandardMaterial({color:0xf58b1f,roughness:0.6});
+const beltItemGeo=new THREE.BoxGeometry(0.45,0.45,0.45);
+class Conveyor {
+  constructor(from,to,items=[]){
+    this.from=from; this.to=to; this.items=items; this.pullTimer=0; this.speed=3.2; this.itemMeshes=[];
+    this.a=from.pos.clone(); this.b=to.pos.clone(); this.length=Math.max(1,this.a.distanceTo(this.b)); this.cap=Math.max(1,Math.floor(this.length/1.4));
+    this.mesh=new THREE.Group(); this.mesh.userData.conveyor=this;
+    const n=Math.max(1,Math.round(this.length/2)); const segLen=this.length/n;
+    for(let i=0;i<n;i++){
+      const p0=this.pointAt(i/n), p1=this.pointAt((i+1)/n); const mid=p0.clone().lerp(p1,0.5);
+      const seg=new THREE.Group(); seg.position.copy(mid); seg.lookAt(p1); const len=p0.distanceTo(p1)+0.05;
+      const b=shadow(new THREE.Mesh(new THREE.BoxGeometry(0.9,0.14,len),beltMat)); seg.add(b);
+      const st=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.02,len),stripeMat); st.position.set(0.42,0.08,0); seg.add(st); const st2=st.clone(); st2.position.x=-0.42; seg.add(st2);
+      for(let k=0;k<2;k++){ const leg=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.5,0.12),beltMat); leg.position.set(k?0.35:-0.35,-0.3,0); seg.add(leg); }
+      this.mesh.add(seg);
+    }
+    scene.add(this.mesh);
+  }
+  pointAt(t){ const p=this.a.clone().lerp(this.b,t); p.y=Math.max(getHeight(p.x,p.z),-0.3)+0.55; return p; }
+  update(dt){
+    const gap=1.0/this.length;
+    for(let i=0;i<this.items.length;i++){ const it=this.items[i]; const maxT=i===0?1:this.items[i-1].t-gap; it.t=Math.min(it.t+dt*this.speed/this.length,Math.max(it.t,maxT)); }
+    if(this.items.length&&this.items[0].t>=0.999){ const it=this.items[0]; if(this.to.accepts(it.item)&&this.to.inputRoom()){ addAll(this.to.input,{[it.item]:1}); this.items.shift(); } }
+    this.pullTimer+=dt;
+    if(this.pullTimer>=0.5&&this.items.length<this.cap&&(this.items.length===0||this.items[this.items.length-1].t>gap)){
+      this.pullTimer=0; const item=Object.keys(this.from.output).find(k=>this.from.output[k]>0&&this.to.accepts(k));
+      if(item){ takeAll(this.from.output,{[item]:1}); this.items.push({item,t:0}); }
+    }
+    while(this.itemMeshes.length<this.items.length){ const m=new THREE.Mesh(beltItemGeo,new THREE.MeshStandardMaterial({color:0xffffff})); this.mesh.add(m); this.itemMeshes.push(m); }
+    this.itemMeshes.forEach((m,i)=>{ const it=this.items[i]; if(!it){ m.visible=false; return; } m.visible=true; m.material.color.set(ITEMS[it.item].color); m.position.copy(this.pointAt(it.t)); m.position.y+=0.3; });
+  }
+  dispose(){ scene.remove(this.mesh); }
+  get cost(){ return {iron_plate:Math.max(1,Math.ceil(this.length/2))}; }
+}
+function removeMachine(m){
+  const refund=BUILDINGS[m.type].cost; addAll(S.inv,refund); S.invDirty=true;
+  for(const k in m.input) invAdd(k,m.input[k]); if(m.output!==m.input) for(const k in m.output) invAdd(k,m.output[k]);
+  for(const c of [...S.conveyors]) if(c.from===m||c.to===m) removeConveyor(c);
+  m.dispose(); S.machines.splice(S.machines.indexOf(m),1); toast(`${m.name} 철거 — 자재 환불`);
+}
+function removeConveyor(c){ addAll(S.inv,c.cost); for(const it of c.items) invAdd(it.item,1); S.invDirty=true; c.dispose(); S.conveyors.splice(S.conveyors.indexOf(c),1); }
+
+// ============================================================
+// 플레이어
+// ============================================================
+const P={pos:camera.position,vel:new THREE.Vector3(),onGround:false,eye:1.7};
+function spawn(){ P.pos.set(0,getHeight(0,0)+P.eye,0); P.vel.set(0,0,0); camera.rotation.set(0,0,0); }
+spawn();
+const _f=new THREE.Vector3(), _r=new THREE.Vector3(), _d=new THREE.Vector3();
+function updatePlayer(dt){
+  const canMove=controls.isLocked&&!S.panel;
+  camera.getWorldDirection(_f); _f.y=0; _f.normalize(); _r.crossVectors(_f,camera.up).normalize(); _d.set(0,0,0);
+  if(canMove){ if(keys.KeyW)_d.add(_f); if(keys.KeyS)_d.sub(_f); if(keys.KeyD)_d.add(_r); if(keys.KeyA)_d.sub(_r); }
+  const moving=_d.lengthSq()>0; if(moving)_d.normalize();
+  const sprint=canMove&&keys.ShiftLeft&&moving&&S.stamina>0;
+  const speed=sprint?9.5:5.5;
+  if(sprint) S.stamina=Math.max(0,S.stamina-16*dt); else S.stamina=Math.min(100,S.stamina+9*dt);
+  P.vel.x=_d.x*speed; P.vel.z=_d.z*speed; P.vel.y-=28*dt;
+  if(canMove&&keys.Space&&P.onGround){ P.vel.y=9.5; P.onGround=false; }
+  P.pos.addScaledVector(P.vel,dt);
+  P.pos.x=clamp(P.pos.x,-300,300); P.pos.z=clamp(P.pos.z,-300,300);
+  for(const m of S.machines){ const dx=P.pos.x-m.pos.x, dz=P.pos.z-m.pos.z, d=Math.hypot(dx,dz); if(d<1.9&&d>0.001&&P.pos.y<m.pos.y+2.4){ P.pos.x=m.pos.x+dx/d*1.9; P.pos.z=m.pos.z+dz/d*1.9; } }
+  const g=Math.max(getHeight(P.pos.x,P.pos.z),-0.9)+P.eye;
+  if(P.pos.y<=g){ P.pos.y=g; P.vel.y=0; P.onGround=true; } else P.onGround=false;
+  // 생존
+  S.hunger=Math.max(0,S.hunger-dt*(sprint?0.6:0.3));
+  if(S.hunger<=0) S.hp-=dt*2.5; else if(S.hunger>50&&S.hp<100) S.hp=Math.min(100,S.hp+dt*1.5);
+  if(S.hp<=0){ S.hp=100; S.hunger=60; spawn(); toast('쓰러졌습니다… 시작 지점에서 부활'); }
+}
+
+// ============================================================
+// 시선 / 상호작용 / 채굴
+// ============================================================
+const ray=new THREE.Raycaster(); ray.far=14; let look=null; const _cands=[];
+function updateLook(){
+  ray.setFromCamera({x:0,y:0},camera); _cands.length=0; _cands.push(terrain);
+  for(const r of resources) if(r.alive&&r.pos.distanceToSquared(P.pos)<400) _cands.push(r.mesh);
+  for(const m of S.machines) if(m.pos.distanceToSquared(P.pos)<400) _cands.push(m.mesh);
+  for(const c of S.conveyors) if(c.a.distanceToSquared(P.pos)<2500||c.b.distanceToSquared(P.pos)<2500) _cands.push(c.mesh);
+  const hits=ray.intersectObjects(_cands,true); look=null;
+  if(hits.length){ const h=hits[0]; let o=h.object; while(o&&!(o.userData.res||o.userData.machine||o.userData.conveyor)&&o!==terrain) o=o.parent;
+    look={point:h.point,dist:h.distance,res:o?.userData.res,machine:o?.userData.machine,conveyor:o?.userData.conveyor,terrain:o===terrain}; }
+}
+function updateMining(dt){
+  const m=S.mining; const prog=$('#prog');
+  const target=(!S.build&&S.mouseDown&&controls.isLocked&&!S.panel&&look?.res&&look.dist<4.5)?look.res:null;
+  if(target!==m.target){ m.target=target; m.progress=0; }
+  if(!target){ prog.style.display='none'; return; }
+  m.progress+=dt/target.time; prog.style.display='block'; prog.firstElementChild.style.width=(m.progress*100)+'%';
+  if(m.progress>=1){ m.progress=0; invAdd(target.item,target.per); toast(`+${target.per} ${ITEMS[target.item].name}`);
+    if(target.hits!==Infinity){ target.hits--; if(target.hits<=0){ target.alive=false; scene.remove(target.mesh); S.removed.add(target.id); m.target=null; } } }
+}
+function promptText(){
+  if(S.build==='conveyor'){ return S.convFrom?`도착 기계를 클릭 (${S.convFrom.name}에서 출발) · 우클릭 취소`:'출발 기계를 클릭 · 우클릭 취소'; }
+  if(S.build) return `[좌클릭] ${BUILDINGS[S.build].name} 설치 · [R] 회전 · [Q] 취소`;
+  if(!look||look.dist>6) return '';
+  if(look.res) return `[좌클릭 유지] ${look.res.name} 채굴${look.res.miner?' (채굴기 설치됨)':''}`;
+  if(look.machine) return `[E] ${look.machine.name} 열기 · [X] 철거`;
+  if(look.conveyor) return `컨베이어 (${look.conveyor.items.length}개 운반 중) · [X] 철거`;
+  return '';
+}
+
+// ============================================================
+// 건설
+// ============================================================
+function selectBuild(type){
+  cancelBuild(); S.build=type; S.convFrom=null;
+  $('#buildmode').style.display='block'; $('#buildmode').textContent=`건설 모드: ${BUILDINGS[type].name}`;
+  if(type!=='conveyor'){ S.ghost=buildMesh(type); S.ghostMats=[]; S.ghost.traverse(o=>{ if(o.isMesh){ o.material=new THREE.MeshBasicMaterial({color:0x33ff66,transparent:true,opacity:0.45,depthWrite:false}); o.castShadow=false; S.ghostMats.push(o.material); } }); scene.add(S.ghost); }
+}
+function cancelBuild(){ if(S.ghost){ scene.remove(S.ghost); S.ghost=null; } S.build=null; S.convFrom=null; $('#buildmode').style.display='none'; }
+function placementCheck(){
+  const type=S.build; if(!type||type==='conveyor'||!look) return null;
+  if(type==='miner'){ if(look.res?.kind==='ore'&&!look.res.miner&&look.dist<10) return {pos:look.res.pos.clone(),node:look.res}; return null; }
+  if(look.terrain&&look.dist<12&&look.point.y>0.3){ const p=look.point.clone(); if(S.machines.some(m=>m.pos.distanceTo(p)<3.2)) return null; if(resources.some(r=>r.alive&&r.kind==='ore'&&r.pos.distanceTo(p)<2.6)) return null; return {pos:p,node:null}; }
+  return null;
+}
+function updateGhost(){
+  if(!S.ghost) return; const pc=placementCheck(); const afford=hasAll(S.inv,BUILDINGS[S.build].cost);
+  if(pc){ S.ghost.visible=true; S.ghost.position.copy(pc.pos); S.ghost.rotation.y=S.ghostRot; } else if(look?.point){ S.ghost.visible=true; S.ghost.position.copy(look.point); S.ghost.rotation.y=S.ghostRot; } else S.ghost.visible=false;
+  const c=(pc&&afford)?0x33ff66:0xff3344; for(const m of S.ghostMats) m.color.setHex(c);
+}
+function tryPlace(){
+  const type=S.build; const cost=BUILDINGS[type].cost;
+  if(type==='conveyor'){
+    if(!look?.machine||look.dist>12){ toast('기계를 조준하고 클릭하세요'); return; }
+    if(!S.convFrom){ if(look.machine.type==='miner'||look.machine.type==='smelter'||look.machine.type==='constructor'||look.machine.type==='storage'){ S.convFrom=look.machine; toast(`출발: ${S.convFrom.name}`); } return; }
+    const to=look.machine; if(to===S.convFrom){ toast('같은 기계입니다'); return; }
+    if(to.type==='miner'){ toast('채굴기는 입력을 받을 수 없어요'); return; }
+    if(S.conveyors.some(c=>c.from===S.convFrom&&c.to===to)){ toast('이미 연결됨'); return; }
+    const tmp=new Conveyor(S.convFrom,to); if(!hasAll(S.inv,tmp.cost)){ tmp.dispose(); toast(`철판 ${tmp.cost.iron_plate}개 필요`); return; }
+    takeAll(S.inv,tmp.cost); S.invDirty=true; S.conveyors.push(tmp); toast(`컨베이어 연결: ${S.convFrom.name} → ${to.name}`); S.convFrom=null; return;
+  }
+  const pc=placementCheck(); if(!pc){ toast(type==='miner'?'광석 노드 위에만 설치할 수 있어요':'여기엔 설치할 수 없어요'); return; }
+  if(!hasAll(S.inv,cost)){ toast('자재 부족: '+Object.entries(cost).map(([k,v])=>`${ITEMS[k].name} ${v}`).join(', ')); return; }
+  takeAll(S.inv,cost); S.invDirty=true; S.machines.push(new Machine(type,pc.pos,S.ghostRot,pc.node)); toast(`${BUILDINGS[type].name} 설치 완료`);
+  if(!hasAll(S.inv,cost)) cancelBuild();
+}
+
+// ============================================================
+// UI 패널
+// ============================================================
+const ui=$('#ui'), uiPanel=$('#uiPanel'), menu=$('#menu');
+function lock(){ const p=canvas.requestPointerLock?.(); if(p&&p.catch) p.catch(()=>{ showMenu('화면을 클릭해 다시 시작하세요'); }); }
+function showMenu(msg=''){ menu.style.display='flex'; $('#menuMsg').textContent=msg; $('#btnStart').textContent=S.started?'계속하기':'게임 시작'; }
+function openPanel(kind,machine=null){ S.panel=kind; S.openMachine=machine; S.mouseDown=false; ui.style.display='flex'; renderPanel(); if(controls.isLocked) controls.unlock(); }
+function closePanel(){ S.panel=null; S.openMachine=null; ui.style.display='none'; lock(); }
+function renderPanel(){
+  if(S.panel==='craft'){
+    const rows=Object.entries(HAND_RECIPES).map(([k,r])=>{ const ok=hasAll(S.inv,r.in); let max=0; while(max<5&&Object.entries(r.in).every(([i,v])=>cnt(i)>=v*(max+1))) max++;
+      return `<div class="row ${ok?'':'off'}"><div><div class="nm">${r.name} <span style="color:#888;font-weight:400">×${Object.values(r.out)[0]}</span></div><div class="cost">${costStr(r.in)}</div></div><div style="display:flex;gap:4px"><button data-craft="${k}" data-n="1" ${ok?'':'disabled'}>제작</button><button data-craft="${k}" data-n="${max}" ${max>1?'':'disabled'} class="ghost">×${max||5}</button></div></div>`; }).join('');
+    uiPanel.innerHTML=`<h2>인벤토리 & 수동 제작 <small>Tab / Esc 닫기</small></h2><div class="cols"><div><h3>소지품</h3><div class="chips">${bagStr(S.inv)}</div><h3>상태</h3><div style="font-size:13px;color:#aaa">체력 ${Math.round(S.hp)} · 허기 ${Math.round(S.hunger)} · 베리 ${cnt('berries')}개 (F로 먹기, +25 허기)</div></div><div><h3>레시피</h3>${rows}</div></div>`;
+  } else if(S.panel==='build'){
+    const cards=Object.entries(BUILDINGS).map(([k,b],i)=>`<div class="card ${hasAll(S.inv,b.cost)?'':'off'}" data-build="${k}"><div class="nm">${i+1}. ${b.name}</div><div class="ds">${b.desc}</div><div class="cost">${costStr(b.cost)}</div></div>`).join('');
+    uiPanel.innerHTML=`<h2>건설 메뉴 <small>B / Esc 닫기 · 숫자키로 빠른 선택</small></h2><div class="grid">${cards}</div><h3>소지품</h3><div class="chips">${bagStr(S.inv)}</div>`;
+  } else if(S.panel==='machine'&&S.openMachine){
+    const m=S.openMachine; let body='';
+    if(m.type==='miner') body=`<h3>출력 (${m.node.name})</h3><div class="chips">${bagStr(m.output)}</div><div style="margin-top:10px"><button data-act="takeout">전부 꺼내기</button></div><p style="font-size:12px;color:#888">상태: ${m.working?'채굴 중':'출력 가득 참'} · 버퍼 ${total(m.output)}/${m.cap}</p>`;
+    else if(m.type==='storage') body=`<h3>보관 중 (${total(m.input)}/${m.cap})</h3><div class="chips">${bagStr(m.input)}</div><div style="margin-top:10px"><button data-act="takeout">전부 꺼내기</button></div><h3>넣기</h3><div class="chips">${Object.keys(S.inv).map(k=>`<button class="ghost" data-put="${k}">${ITEMS[k].name} ×${S.inv[k]}</button>`).join('')||'<span style="color:#666;font-size:12px">넣을 아이템 없음</span>'}</div>`;
+    else {
+      const sel=m.type==='constructor'?`<h3>레시피</h3><select data-recipe>${Object.entries(CON_RECIPES).map(([k,r])=>`<option value="${k}" ${m.recipe===k?'selected':''}>${r.name} — ${Object.entries(r.in).map(([i,v])=>`${ITEMS[i].name} ${v}`).join('+')} → ${Object.entries(r.out).map(([i,v])=>`${ITEMS[i].name} ${v}`).join('+')} (${r.time}s)</option>`).join('')}</select>`:'<p style="font-size:12px;color:#888">철 광석 → 철 주괴, 구리 광석 → 구리 주괴 (2초)</p>';
+      const putable=Object.keys(S.inv).filter(k=>m.accepts(k));
+      body=`${sel}<h3>입력 (${total(m.input)}/${m.cap})</h3><div class="chips">${bagStr(m.input)}</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${putable.map(k=>`<button data-put="${k}">${ITEMS[k].name} ×${S.inv[k]} 넣기</button>`).join('')||'<span style="color:#666;font-size:12px">넣을 수 있는 아이템이 없어요</span>'}</div><h3>출력</h3><div class="chips">${bagStr(m.output)}</div><div style="margin-top:8px"><button data-act="takeout">전부 꺼내기</button></div><p style="font-size:12px;color:#888">상태: ${m.working?`가동 중 (${Math.round(m.timer/ (m.currentRecipe()?.time||1)*100)}%)`:'대기'}</p>`;
+    }
+    uiPanel.innerHTML=`<h2>${m.name} <small>E / Esc 닫기</small></h2>${body}<h3>내 소지품</h3><div class="chips">${bagStr(S.inv)}</div>`;
+  }
+}
+uiPanel.addEventListener('click',e=>{
+  const b=e.target.closest('[data-craft],[data-build],[data-act],[data-put]'); if(!b) return;
+  if(b.dataset.craft){ const r=HAND_RECIPES[b.dataset.craft]; let n=+b.dataset.n||1, made=0; while(n-->0&&hasAll(S.inv,r.in)){ takeAll(S.inv,r.in); addAll(S.inv,r.out); made++; } if(made){ S.invDirty=true; toast(`${r.name} ×${Object.values(r.out)[0]*made} 제작`); } renderPanel(); }
+  else if(b.dataset.build){ const k=b.dataset.build; closePanel(); selectBuild(k); if(!hasAll(S.inv,BUILDINGS[k].cost)) toast('자재가 부족하지만 미리 배치 위치를 볼 수 있어요'); }
+  else if(b.dataset.act==='takeout'){ const m=S.openMachine; const bag=m.type==='storage'?m.input:m.output; let n=0; for(const k in bag){ invAdd(k,bag[k]); n+=bag[k]; } for(const k in bag) delete bag[k]; toast(`${n}개 꺼냄`); renderPanel(); }
+  else if(b.dataset.put){ const m=S.openMachine, k=b.dataset.put; const room=m.cap-total(m.input); const n=Math.min(cnt(k),room); if(n>0){ invAdd(k,-n); addAll(m.input,{[k]:n}); } renderPanel(); }
+});
+uiPanel.addEventListener('change',e=>{ if(e.target.dataset.recipe!==undefined&&S.openMachine){ S.openMachine.recipe=e.target.value; S.openMachine.timer=0; renderPanel(); } });
+
+// ============================================================
+// 입력
+// ============================================================
+document.addEventListener('pointerlockchange',()=>{ if(document.pointerLockElement===canvas){ menu.style.display='none'; S.started=true; } else { S.mouseDown=false; for(const k in keys) keys[k]=false; if(!S.panel) showMenu(); } });
+$('#btnStart').onclick=()=>lock();
+$('#btnSave').onclick=()=>{ save(); $('#menuMsg').textContent='저장했습니다.'; };
+$('#btnReset').onclick=()=>{ if(confirm('진행 상황을 모두 지우고 새로 시작할까요?')){ localStorage.removeItem('ficsit-lite'); location.reload(); } };
+canvas.addEventListener('mousedown',e=>{ if(!controls.isLocked){ if(menu.style.display!=='none'&&ui.style.display==='none') lock(); return; }
+  if(e.button===0){ if(S.build) tryPlace(); else S.mouseDown=true; } else if(e.button===2&&S.build) cancelBuild(); });
+addEventListener('mouseup',e=>{ if(e.button===0) S.mouseDown=false; });
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('keydown',e=>{
+  if(e.code==='Tab') e.preventDefault();
+  if(S.panel){ if(e.code==='Escape'||e.code==='Tab'||e.code==='KeyB'||e.code==='KeyE'){ e.preventDefault(); closePanel(); } return; }
+  if(!controls.isLocked) return;
+  keys[e.code]=true;
+  switch(e.code){
+    case 'Tab': openPanel('craft'); break;
+    case 'KeyB': openPanel('build'); break;
+    case 'KeyE': if(look?.machine&&look.dist<6) openPanel('machine',look.machine); break;
+    case 'KeyF': if(cnt('berries')>0){ invAdd('berries',-1); S.hunger=Math.min(100,S.hunger+25); S.hp=Math.min(100,S.hp+5); toast('베리를 먹었습니다 (+25 허기)'); } else toast('베리가 없어요. 덤불을 찾아보세요'); break;
+    case 'KeyX': if(look?.machine&&look.dist<7) removeMachine(look.machine); else if(look?.conveyor&&look.dist<7){ removeConveyor(look.conveyor); toast('컨베이어 철거'); } break;
+    case 'KeyR': S.ghostRot+=Math.PI/2; break;
+    case 'KeyQ': cancelBuild(); break;
+    case 'Digit1': selectBuild('miner'); break; case 'Digit2': selectBuild('smelter'); break; case 'Digit3': selectBuild('constructor'); break; case 'Digit4': selectBuild('storage'); break; case 'Digit5': selectBuild('conveyor'); break;
+  }
+});
+addEventListener('keyup',e=>{ keys[e.code]=false; });
+
+// ============================================================
+// 저장 / 불러오기
+// ============================================================
+function save(){
+  const data={inv:S.inv,hp:S.hp,hunger:S.hunger,day:S.day,time:S.time,obj:S.obj,pos:[P.pos.x,P.pos.y,P.pos.z],removed:[...S.removed],
+    machines:S.machines.map(m=>({type:m.type,pos:[m.pos.x,m.pos.y,m.pos.z],rot:m.rot,node:m.node?m.node.id:null,input:m.input,output:m.type==='storage'?undefined:m.output,recipe:m.recipe})),
+    conveyors:S.conveyors.map(c=>({from:S.machines.indexOf(c.from),to:S.machines.indexOf(c.to),items:c.items}))};
+  try{ localStorage.setItem('ficsit-lite',JSON.stringify(data)); }catch(e){}
+}
+function load(){
+  let d; try{ d=JSON.parse(localStorage.getItem('ficsit-lite')); }catch(e){} if(!d) return false;
+  Object.assign(S,{inv:d.inv||{},hp:d.hp??100,hunger:d.hunger??100,day:d.day||1,time:d.time??0.3,obj:d.obj||0}); S.invDirty=true;
+  if(d.pos) P.pos.set(d.pos[0],d.pos[1],d.pos[2]);
+  for(const id of d.removed||[]){ const r=resources[id]; if(r){ r.alive=false; scene.remove(r.mesh); S.removed.add(id); } }
+  for(const m of d.machines||[]){ const node=m.node!=null?resources[m.node]:null; const mm=new Machine(m.type,new THREE.Vector3(...m.pos),m.rot,node); Object.assign(mm.input,m.input||{}); if(m.output) Object.assign(mm.output,m.output); if(m.recipe) mm.recipe=m.recipe; S.machines.push(mm); }
+  for(const c of d.conveyors||[]){ const from=S.machines[c.from], to=S.machines[c.to]; if(from&&to) S.conveyors.push(new Conveyor(from,to,c.items||[])); }
+  return true;
+}
+if(load()) $('#menuMsg').textContent='저장된 게임을 불러왔습니다.';
+setInterval(()=>{ if(S.started) save(); },30000); addEventListener('beforeunload',()=>{ if(S.started) save(); });
+
+// ============================================================
+// 낮/밤 · HUD · 메인 루프
+// ============================================================
+const DAY_LEN=300, skyDay=new THREE.Color(0x87ceeb), skyNight=new THREE.Color(0x0b1026), skyDusk=new THREE.Color(0xf0905a), _sky=new THREE.Color();
+function updateDay(dt){
+  S.time+=dt/DAY_LEN; if(S.time>=1){ S.time-=1; S.day++; toast(`Day ${S.day}`); }
+  const ang=(S.time-0.25)*Math.PI*2, el=Math.sin(ang);
+  sun.position.set(P.pos.x+Math.cos(ang)*120,Math.max(el,-0.1)*140+5,P.pos.z+50); sun.target.position.copy(P.pos);
+  const light=THREE.MathUtils.smoothstep(el,-0.12,0.22), dusk=1-Math.min(1,Math.abs(el)/0.25);
+  sun.intensity=2.2*light; hemi.intensity=0.12+0.65*light;
+  _sky.copy(skyNight).lerp(skyDay,light).lerp(skyDusk,dusk*0.55*Math.max(light,0.3));
+  scene.background.copy(_sky); scene.fog.color.copy(_sky); water.material.opacity=0.6+0.2*light;
+}
+let hudT=0;
+function updateHUD(dt){
+  $('#hp i').style.width=S.hp+'%'; $('#hunger i').style.width=S.hunger+'%'; $('#stamina i').style.width=S.stamina+'%';
+  hudT+=dt; if(hudT<0.12) return; hudT=0;
+  if(S.invDirty){ S.invDirty=false; $('#inv').innerHTML=bagStr(S.inv); if(S.panel) renderPanel(); }
+  else if(S.panel==='machine'&&document.activeElement?.tagName!=='SELECT') renderPanel();
+  const p=promptText(); const pe=$('#prompt'); pe.style.display=p?'block':'none'; pe.innerHTML=p;
+  const hh=Math.floor(S.time*24), mm=Math.floor((S.time*24-hh)*60); $('#clock').textContent=`Day ${S.day} · ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  if(S.obj<OBJECTIVES.length&&OBJECTIVES[S.obj].c()){ S.obj++; toast(S.obj<OBJECTIVES.length?`목표 ${S.obj} 완료!`:'🎉 자동화 라인 완성! 자유롭게 확장해보세요'); }
+  $('#objective').innerHTML=S.obj<OBJECTIVES.length?`<b>목표 ${S.obj+1}/${OBJECTIVES.length}</b><br>${OBJECTIVES[S.obj].t}`:`<b>모든 목표 달성 🎉</b><br>더 많은 채굴기와 제작기로 공장을 키워보세요.`;
+}
+const clock=new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),0.05); const running=S.started&&controls.isLocked;
+  if(running){ S.playTime+=dt; updatePlayer(dt); updateLook(); updateMining(dt); updateGhost(); updateDay(dt); }
+  for(const m of S.machines) m.update(running?dt:0); for(const c of S.conveyors) c.update(running?dt:0);
+  updateHUD(dt);
+  renderer.render(scene,camera);
+}
+window.__dbg={S,P,resources,Machine,Conveyor,invAdd,selectBuild,tryPlace,placementCheck,removeMachine,THREE,getHeight,lookRef:()=>look,updateLook,openPanel,closePanel,renderPanel,HAND_RECIPES,BUILDINGS};
+updateDay(0); loop();
+</script>
+</body>
+</html>
