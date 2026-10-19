@@ -1,5 +1,7 @@
 # FORGEWORLD
 
+**바로 플레이:** [2D 버전](https://uiojkl-123.github.io/forgeworld/2d/) · [3D 버전](https://uiojkl-123.github.io/forgeworld/)
+
 자동화·제작 게임 프로토타입. 철 광석에서 강판까지 6단계 공정(파쇄 → 선별 → 소결 → 제련 → 정련 → 압연)을 직접 조립한다.
 설계도 언락 없음. 모든 레시피는 처음부터 공개되고, 막는 건 재료·온도·동력뿐이다.
 
